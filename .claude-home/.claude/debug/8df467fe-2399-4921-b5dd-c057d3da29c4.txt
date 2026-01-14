@@ -1,0 +1,159 @@
+2026-01-01T07:51:32.401Z [DEBUG] [SLOW OPERATION DETECTED] execSyncWithDefaults_DEPRECATED (18.2ms): security find-generic-password -a $USER -w -s "Claude Code"
+2026-01-01T07:51:32.413Z [DEBUG] [SLOW OPERATION DETECTED] execSyncWithDefaults_DEPRECATED (11.2ms): security find-generic-password -a "mason" -w -s "Claude Code-credentials"
+2026-01-01T07:51:32.413Z [ERROR] Failed to save config with lock: Error: ENOENT: no such file or directory, lstat '/Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json'
+2026-01-01T07:51:32.414Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892414
+2026-01-01T07:51:32.414Z [DEBUG] Setting permissions for new file: 600
+2026-01-01T07:51:32.414Z [DEBUG] Temp file written successfully, size: 82 bytes
+2026-01-01T07:51:32.414Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892414 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.414Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.417Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892417
+2026-01-01T07:51:32.417Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.417Z [DEBUG] Temp file written successfully, size: 130 bytes
+2026-01-01T07:51:32.417Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.417Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892417 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.417Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.430Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892430
+2026-01-01T07:51:32.430Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.430Z [DEBUG] Temp file written successfully, size: 167 bytes
+2026-01-01T07:51:32.430Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.430Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892430 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.430Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.430Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892430
+2026-01-01T07:51:32.430Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.430Z [DEBUG] Temp file written successfully, size: 202 bytes
+2026-01-01T07:51:32.430Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.430Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892430 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.430Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.431Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892431
+2026-01-01T07:51:32.431Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.431Z [DEBUG] Temp file written successfully, size: 239 bytes
+2026-01-01T07:51:32.431Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.431Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892431 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.431Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.432Z [DEBUG] [LSP MANAGER] initializeLspServerManager() called
+2026-01-01T07:51:32.432Z [DEBUG] [LSP MANAGER] Created manager instance, state=pending
+2026-01-01T07:51:32.432Z [DEBUG] [LSP MANAGER] Starting async initialization (generation 1)
+2026-01-01T07:51:32.432Z [DEBUG] LSP server manager initialized successfully
+2026-01-01T07:51:32.432Z [DEBUG] LSP notification handlers registered successfully for all 0 server(s)
+2026-01-01T07:51:32.432Z [DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+2026-01-01T07:51:32.435Z [DEBUG] Loading skills from: managed=/Library/Application Support/ClaudeCode/.claude/skills, user=/Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/skills, project=[/Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude/skills]
+2026-01-01T07:51:32.444Z [DEBUG] [SLOW OPERATION DETECTED] execSyncWithDefaults_DEPRECATED (8.0ms): ps aux | grep -E "Visual Studio Code|Code Helper|Cursor Helper|Windsurf Helper|IntelliJ IDEA|PyCharm
+2026-01-01T07:51:32.445Z [DEBUG] installed_plugins.json doesn't exist, returning empty V2 object
+2026-01-01T07:51:32.454Z [DEBUG] Creating shell snapshot for zsh (/bin/zsh)
+2026-01-01T07:51:32.454Z [DEBUG] Looking for shell config file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.zshrc
+2026-01-01T07:51:32.454Z [DEBUG] Shell config file not found: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.zshrc, creating snapshot with Claude Code defaults only
+2026-01-01T07:51:32.454Z [DEBUG] Snapshots directory: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/shell-snapshots
+2026-01-01T07:51:32.454Z [DEBUG] Creating snapshot at: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/shell-snapshots/snapshot-zsh-1767253892454-sgspdg.sh
+2026-01-01T07:51:32.454Z [DEBUG] Shell binary exists: true
+2026-01-01T07:51:32.454Z [DEBUG] Execution timeout: 10000ms
+2026-01-01T07:51:32.455Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/todos/8df467fe-2399-4921-b5dd-c057d3da29c4-agent-8df467fe-2399-4921-b5dd-c057d3da29c4.json.tmp.82994.1767253892455
+2026-01-01T07:51:32.455Z [DEBUG] Temp file written successfully, size: 2 bytes
+2026-01-01T07:51:32.455Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/todos/8df467fe-2399-4921-b5dd-c057d3da29c4-agent-8df467fe-2399-4921-b5dd-c057d3da29c4.json.tmp.82994.1767253892455 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/todos/8df467fe-2399-4921-b5dd-c057d3da29c4-agent-8df467fe-2399-4921-b5dd-c057d3da29c4.json
+2026-01-01T07:51:32.455Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude/todos/8df467fe-2399-4921-b5dd-c057d3da29c4-agent-8df467fe-2399-4921-b5dd-c057d3da29c4.json written atomically
+2026-01-01T07:51:32.457Z [DEBUG] getPluginSkills: Processing 0 enabled plugins
+2026-01-01T07:51:32.457Z [DEBUG] Total plugin skills loaded: 0
+2026-01-01T07:51:32.457Z [DEBUG] Total plugin commands loaded: 0
+2026-01-01T07:51:32.457Z [DEBUG] Registered 0 hooks from 0 plugins
+2026-01-01T07:51:32.458Z [DEBUG] Total plugin agents loaded: 0
+2026-01-01T07:51:32.458Z [DEBUG] Loaded 0 unique skills (managed: 0, user: 0, project: 0, legacy commands: 0)
+2026-01-01T07:51:32.458Z [DEBUG] getSkills returning: 0 skill dir commands, 0 plugin skills
+2026-01-01T07:51:32.463Z [DEBUG] Initialized versioned plugins system with 0 plugins
+2026-01-01T07:51:32.466Z [DEBUG] Getting matching hook commands for SessionStart with query: startup
+2026-01-01T07:51:32.466Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:32.466Z [DEBUG] Matched 0 unique hooks for query "startup" (0 before deduplication)
+2026-01-01T07:51:32.471Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892471
+2026-01-01T07:51:32.471Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.471Z [DEBUG] Temp file written successfully, size: 311 bytes
+2026-01-01T07:51:32.471Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.471Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892471 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.471Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.472Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472
+2026-01-01T07:51:32.472Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.472Z [DEBUG] Temp file written successfully, size: 363 bytes
+2026-01-01T07:51:32.472Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.472Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.472Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.472Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472
+2026-01-01T07:51:32.472Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.472Z [DEBUG] Temp file written successfully, size: 401 bytes
+2026-01-01T07:51:32.472Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.472Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.472Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.472Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472
+2026-01-01T07:51:32.472Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.472Z [DEBUG] Temp file written successfully, size: 437 bytes
+2026-01-01T07:51:32.472Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.472Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892472 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.472Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.473Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892473
+2026-01-01T07:51:32.473Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.473Z [DEBUG] Temp file written successfully, size: 467 bytes
+2026-01-01T07:51:32.473Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.473Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892473 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.473Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.473Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892473
+2026-01-01T07:51:32.473Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:32.473Z [DEBUG] Temp file written successfully, size: 497 bytes
+2026-01-01T07:51:32.473Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:32.473Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253892473 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:32.473Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:32.491Z [DEBUG] Git remote URL: null
+2026-01-01T07:51:32.492Z [DEBUG] No git remote URL found
+2026-01-01T07:51:32.492Z [DEBUG] Not in a GitHub repository, skipping path mapping update
+2026-01-01T07:51:32.495Z [DEBUG] Getting matching hook commands for SubagentStart with query: Explore
+2026-01-01T07:51:32.495Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:32.495Z [DEBUG] Matched 0 unique hooks for query "Explore" (0 before deduplication)
+2026-01-01T07:51:32.497Z [DEBUG] Getting matching hook commands for SubagentStart with query: Plan
+2026-01-01T07:51:32.497Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:32.497Z [DEBUG] Matched 0 unique hooks for query "Plan" (0 before deduplication)
+2026-01-01T07:51:32.497Z [DEBUG] Shell snapshot created successfully (866 bytes)
+2026-01-01T07:51:32.498Z [DEBUG] Total plugin output styles loaded: 0
+2026-01-01T07:51:32.507Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-01-01T07:51:32.507Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-01-01T07:51:32.507Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-01-01T07:51:32.507Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-01-01T07:51:32.509Z [DEBUG] Getting matching hook commands for UserPromptSubmit with query: undefined
+2026-01-01T07:51:32.509Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:32.509Z [DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+2026-01-01T07:51:32.949Z [DEBUG] Ripgrep first use test: PASSED (mode=builtin, path=/Users/mason/.local/share/claude/versions/2.0.76)
+2026-01-01T07:51:33.104Z [DEBUG] Skills and commands included in Skill tool:
+2026-01-01T07:51:33.106Z [ERROR] "Error: Error: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted\n    at validateHeaders (/$bunfs/root/claude:801:1013)\n    at buildHeaders (/$bunfs/root/claude:801:8517)\n    at async buildRequest (/$bunfs/root/claude:801:7583)\n    at async makeRequest (/$bunfs/root/claude:801:3411)\n    at processTicksAndRejections (native:7:39)"
+2026-01-01T07:51:34.980Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894980
+2026-01-01T07:51:34.980Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:34.980Z [DEBUG] Temp file written successfully, size: 568 bytes
+2026-01-01T07:51:34.980Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:34.980Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894980 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:34.981Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:34.983Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894983
+2026-01-01T07:51:34.983Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:34.983Z [DEBUG] Temp file written successfully, size: 636 bytes
+2026-01-01T07:51:34.983Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:34.983Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894983 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:34.983Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:34.998Z [DEBUG] Writing to temp file: /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894998
+2026-01-01T07:51:34.998Z [DEBUG] Preserving file permissions: 100600
+2026-01-01T07:51:34.998Z [DEBUG] Temp file written successfully, size: 683 bytes
+2026-01-01T07:51:34.998Z [DEBUG] Applied original permissions to temp file
+2026-01-01T07:51:34.998Z [DEBUG] Renaming /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json.tmp.82994.1767253894998 to /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json
+2026-01-01T07:51:34.999Z [DEBUG] File /Users/mason/Documents/Projects/AI Business/Sales-SDK/.claude-home/.claude.json written atomically
+2026-01-01T07:51:35.009Z [ERROR] Error streaming, falling back to non-streaming mode: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.009Z [ERROR] Error streaming, falling back to non-streaming mode: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.010Z [ERROR] Error streaming, falling back to non-streaming mode: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.011Z [ERROR] Error in non-streaming fallback: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.011Z [ERROR] "Error: Error: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted\n    at validateHeaders (/$bunfs/root/claude:801:1013)\n    at buildHeaders (/$bunfs/root/claude:801:8517)\n    at processTicksAndRejections (native:7:39)"
+2026-01-01T07:51:35.012Z [ERROR] Error in non-streaming fallback: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.012Z [ERROR] "Error: Error: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted\n    at validateHeaders (/$bunfs/root/claude:801:1013)\n    at buildHeaders (/$bunfs/root/claude:801:8517)\n    at processTicksAndRejections (native:7:39)"
+2026-01-01T07:51:35.012Z [ERROR] Error in non-streaming fallback: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted
+2026-01-01T07:51:35.012Z [ERROR] "Error: Error: Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted\n    at validateHeaders (/$bunfs/root/claude:801:1013)\n    at buildHeaders (/$bunfs/root/claude:801:8517)\n    at async buildRequest (/$bunfs/root/claude:801:7583)\n    at async makeRequest (/$bunfs/root/claude:801:3411)\n    at processTicksAndRejections (native:7:39)"
+2026-01-01T07:51:35.019Z [DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+2026-01-01T07:51:35.019Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:35.019Z [DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+2026-01-01T07:51:35.020Z [DEBUG] Getting matching hook commands for SubagentStop with query: undefined
+2026-01-01T07:51:35.020Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:35.020Z [DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+2026-01-01T07:51:35.021Z [DEBUG] Getting matching hook commands for Stop with query: undefined
+2026-01-01T07:51:35.021Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:35.021Z [DEBUG] Matched 0 unique hooks for query "no match query" (0 before deduplication)
+2026-01-01T07:51:35.029Z [DEBUG] Getting matching hook commands for SessionEnd with query: other
+2026-01-01T07:51:35.029Z [DEBUG] Found 0 hook matchers in settings
+2026-01-01T07:51:35.029Z [DEBUG] Matched 0 unique hooks for query "other" (0 before deduplication)

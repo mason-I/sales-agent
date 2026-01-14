@@ -1,0 +1,437 @@
+import type { 
+  HookCallback, 
+  PreToolUseHookInput, 
+  PostToolUseHookInput,
+  PostToolUseFailureHookInput
+} from "@anthropic-ai/claude-agent-sdk";
+
+const MCP_PREFIX = "mcp__sales-crm__";
+
+// =============================================================================
+// Enforcement State
+// =============================================================================
+
+/**
+ * Tracks enforcement requirements for the current agent run.
+ * Used by hooks to ensure the agent completes required actions.
+ */
+export type EnforcementState = {
+  emailLogged: boolean;
+  stopRetryCount: number;
+  eventSource: string;
+};
+
+type DraftInput = {
+  subject: string;
+  bodyParts: {
+    intro: string;
+    questions: string[];
+    closing: string;
+  };
+};
+
+/**
+ * Create a new enforcement state for an agent run.
+ */
+export function createEnforcementState(eventSource: string): EnforcementState {
+  return {
+    emailLogged: false,
+    stopRetryCount: 0,
+    eventSource
+  };
+}
+
+const MAX_STOP_RETRIES = 2;
+
+/**
+ * Auto-correction patterns for common tool input issues.
+ * These hooks GUIDE rather than BLOCK - they fix issues and let the agent continue.
+ */
+
+function detectAsyncOnlyViolation(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const patterns = [
+    /\b(book|schedule|set up|arrange)\b.*\b(call|meeting|demo)\b/,
+    /\b(calendar|calendly|invite|meeting link|timeslot|time slots)\b/,
+    /\bzoom\b/,
+    /\bgoogle meet\b/
+  ];
+  return patterns.some(p => p.test(lower));
+}
+
+function sanitizeDraftContent(input: any): { sanitized: any; changed: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const sanitized = { ...input };
+  
+  if (input.bodyParts) {
+    const parts = { ...input.bodyParts };
+    
+    // Check and sanitize intro
+    if (parts.intro && detectAsyncOnlyViolation(parts.intro)) {
+      issues.push("Intro contained meeting/call language");
+    }
+    
+    // Check and sanitize questions
+    if (Array.isArray(parts.questions)) {
+      const cleanedQuestions = parts.questions.filter((q: string) => {
+        if (detectAsyncOnlyViolation(q)) {
+          issues.push("Question contained meeting/call language");
+          return false;
+        }
+        return true;
+      });
+      
+      // Allow 0-3 questions; do not enforce a minimum
+      parts.questions = cleanedQuestions;
+    }
+    
+    // Check and sanitize closing
+    if (parts.closing && detectAsyncOnlyViolation(parts.closing)) {
+      issues.push("Closing contained meeting/call language");
+    }
+    
+    sanitized.bodyParts = parts;
+  }
+  
+  // Check subject
+  if (input.subject && detectAsyncOnlyViolation(input.subject)) {
+    issues.push("Subject contained meeting/call language");
+  }
+  
+  return {
+    sanitized,
+    changed: issues.length > 0,
+    issues
+  };
+}
+
+function buildDraftBody(bodyParts: { intro: string; questions: string[]; closing: string }): string {
+  const intro = String(bodyParts.intro || "").trim();
+  const closing = String(bodyParts.closing || "").trim();
+  const questions = Array.isArray(bodyParts.questions)
+    ? bodyParts.questions.map((q) => String(q).trim()).filter(Boolean)
+    : [];
+
+  const normalizedQuestions = questions.slice(0, 3).map((q) => (q.endsWith("?") ? q : `${q}?`));
+  const questionLines = normalizedQuestions.map((q, i) => `${i + 1}) ${q}`).join("\n");
+
+  let body = [intro, questionLines, closing].filter(Boolean).join("\n\n");
+  if (!/zendesk/i.test(body)) {
+    body = `${body}\n\nZendesk`;
+  }
+
+  return body;
+}
+
+function normalizeDraftInput(input: any): DraftInput | null {
+  if (!input || typeof input !== "object") return null;
+  const subject = String(input.subject || "").trim();
+  const bodyParts = input.bodyParts as any;
+  if (!subject || !bodyParts) return null;
+
+  const intro = String(bodyParts.intro || "").trim();
+  const closing = String(bodyParts.closing || "").trim();
+  const questions = Array.isArray(bodyParts.questions)
+    ? bodyParts.questions.map((q: string) => String(q).trim()).filter(Boolean)
+    : [];
+
+  return {
+    subject,
+    bodyParts: { intro, questions, closing }
+  };
+}
+
+function ensureValidKbObjective(input: any, fallback = "Verify Zendesk capability"): { updated: any; changed: boolean } {
+  if (!input.objective || typeof input.objective !== "string" || input.objective.trim().length < 5) {
+    return {
+      updated: { ...input, objective: fallback },
+      changed: true
+    };
+  }
+  return { updated: input, changed: false };
+}
+
+/**
+ * Pre-tool hook for logging and auto-correction.
+ * Never blocks - only guides via systemMessage and auto-corrects input.
+ */
+export function createPreToolHook(options: {
+  onToolCall?: (toolName: string, input: any) => void;
+  onDraftInput?: (input: DraftInput) => void;
+}): HookCallback {
+  return async (input, toolUseId, context) => {
+    const pre = input as PreToolUseHookInput;
+    const toolName = pre.tool_name;
+    const toolInput = pre.tool_input || {};
+    
+    // Log tool call for observability
+    options.onToolCall?.(toolName, toolInput);
+    
+    // Auto-correct draft input (but don't block)
+    if (toolName === `${MCP_PREFIX}crm_logEmailDraft`) {
+      const { sanitized, changed, issues } = sanitizeDraftContent(toolInput);
+      const draftInput = normalizeDraftInput(changed ? sanitized : toolInput);
+      if (draftInput) {
+        options.onDraftInput?.(draftInput);
+      }
+      
+      if (changed) {
+        return {
+          systemMessage: `Auto-correction applied to draft: ${issues.join("; ")}. Remember: this is an async-only agent - no meetings, calls, or demos.`,
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "allow",
+            updatedInput: sanitized
+          }
+        };
+      }
+    }
+    
+    // Auto-correct KB search input
+    if (toolName === `${MCP_PREFIX}kb_searchZendesk`) {
+      const { updated, changed } = ensureValidKbObjective(toolInput);
+      
+      if (changed) {
+        return {
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "allow",
+            updatedInput: updated
+          }
+        };
+      }
+    }
+    
+    // Auto-correct line items - remove any price overrides (no discounts allowed)
+    if (toolName === `${MCP_PREFIX}crm_createLineItemsForDeal`) {
+      const inputWithItems = toolInput as { items?: any[] };
+      const items = inputWithItems.items;
+      if (items && Array.isArray(items)) {
+        const hasOverrides = items.some(item => item.price !== undefined);
+        if (hasOverrides) {
+          const correctedItems = items.map(({ sku, quantity }) => ({ sku, quantity }));
+          return {
+            systemMessage: "Price overrides are not allowed. Using catalog pricing only. No discounts.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "allow",
+              updatedInput: { ...toolInput, items: correctedItems }
+            }
+          };
+        }
+      }
+    }
+    
+    // Allow all other tools
+    return {};
+  };
+}
+
+/**
+ * Post-tool hook for logging, context injection, and enforcement tracking.
+ * Adds helpful context based on tool results and tracks required actions.
+ */
+export function createPostToolHook(options: {
+  onToolResult?: (toolName: string, result: any, success: boolean) => void;
+  enforcementState?: EnforcementState;
+  getDraftInput?: () => DraftInput | null;
+  setDraftInput?: (input: DraftInput | null) => void;
+  onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
+}): HookCallback {
+  return async (input, toolUseId, context) => {
+    const post = input as PostToolUseHookInput;
+    const toolName = post.tool_name;
+    const response = post.tool_response;
+    
+    // Parse result
+    let parsed: any = null;
+    try {
+      if (typeof response === "string") {
+        parsed = JSON.parse(response);
+      } else if (response && typeof response === "object" && "content" in response) {
+        const content = (response as any).content;
+        if (Array.isArray(content) && content[0]?.text) {
+          parsed = JSON.parse(content[0].text);
+        } else {
+          parsed = response;
+        }
+      } else {
+        parsed = response;
+      }
+    } catch {
+      parsed = response;
+    }
+    
+    const isSuccess = parsed?.ok !== false && parsed?.success !== false;
+    options.onToolResult?.(toolName, parsed, isSuccess);
+    
+    // Track email logging for enforcement
+    if (toolName === `${MCP_PREFIX}crm_logEmailDraft` && isSuccess) {
+      if (options.enforcementState) {
+        options.enforcementState.emailLogged = true;
+      }
+
+      const draftInput = options.getDraftInput?.() || null;
+      if (draftInput) {
+        const body = buildDraftBody(draftInput.bodyParts);
+        const emailId = parsed?.data?.emailId ?? parsed?.data?.id ?? null;
+        options.onEmailDraft?.({
+          subject: draftInput.subject,
+          body,
+          emailId: emailId ? String(emailId) : null
+        });
+        options.setDraftInput?.(null);
+      }
+    }
+    
+    // Add helpful context for KB NOT_FOUND
+    if (toolName === `${MCP_PREFIX}kb_searchZendesk`) {
+      const status = parsed?.data?.status;
+      if (status === "NOT_FOUND") {
+        return {
+          hookSpecificOutput: {
+            hookEventName: post.hook_event_name,
+            additionalContext: "KB search returned NOT_FOUND. Try rephrasing your objective with different keywords, or ask a clarifying question to narrow the scope. Do not guess at Zendesk capabilities."
+          }
+        };
+      }
+    }
+    
+    // Add context for tool failures
+    if (!isSuccess && parsed?.error) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: post.hook_event_name,
+          additionalContext: `Tool ${toolName} failed: ${parsed.error}. Try an alternative approach or continue without this result if non-critical.`
+        }
+      };
+    }
+    
+    return {};
+  };
+}
+
+/**
+ * Logging-only stop hook for telemetry (used when no enforcement is needed).
+ */
+export function createStopHook(options: {
+  onStop?: (reason: string) => void;
+}): HookCallback {
+  return async (input, toolUseId, context) => {
+    options.onStop?.("Agent stopped");
+    return {};
+  };
+}
+
+/**
+ * Enforcing stop hook that blocks completion without required email response.
+ * For new_inbound and reply_to_existing events, the agent MUST log an email draft.
+ * No exceptions (escalations removed - agent is fully autonomous).
+ * 
+ * If email not logged, the hook blocks the stop and forces the agent to continue.
+ */
+export function createEnforcingStopHook(options: {
+  onStop?: (reason: string) => void;
+  enforcementState: EnforcementState;
+}): HookCallback {
+  return async (input, toolUseId, context) => {
+    const state = options.enforcementState;
+    
+    // Sources that require an email response
+    const requiresEmail = ["new_inbound", "reply_to_existing"].includes(state.eventSource);
+    
+    if (requiresEmail && !state.emailLogged) {
+      state.stopRetryCount++;
+      
+      if (state.stopRetryCount > MAX_STOP_RETRIES) {
+        // Prevent infinite loops - allow completion but log warning
+        options.onStop?.("Agent stopped without email (max retries reached)");
+        console.warn("[Hooks] Agent failed to log email after max retries");
+        return {};
+      }
+      
+      // Force agent to continue and send the email
+      console.log(`[Hooks] Stop blocked - email required but not logged (attempt ${state.stopRetryCount}/${MAX_STOP_RETRIES})`);
+      return {
+        continue: true,
+        systemMessage: `STOP BLOCKED: You must respond to the customer before completing. Use the draft-reply skill and call crm_logEmailDraft to send your response. This is attempt ${state.stopRetryCount} of ${MAX_STOP_RETRIES}.`
+      };
+    }
+    
+    options.onStop?.("Agent stopped");
+    return {};
+  };
+}
+
+/**
+ * PostToolUseFailure hook for self-healing.
+ * Injects recovery guidance when tools fail.
+ */
+export function createPostToolUseFailureHook(): HookCallback {
+  return async (input, toolUseId, context) => {
+    const failInput = input as PostToolUseFailureHookInput;
+    const { tool_name, error, is_interrupt } = failInput;
+    
+    // Don't inject guidance for intentional interrupts
+    if (is_interrupt) return {};
+    
+    // Inject recovery guidance
+    return {
+      systemMessage: `Tool "${tool_name}" failed with error: ${error}. ` +
+        `Try an alternative approach, or continue without this result if non-critical. ` +
+        `Do not repeatedly retry the same failing operation.`
+    };
+  };
+}
+
+/**
+ * Build all hooks for the sales agent.
+ * When enforcementState is provided, uses enforcing stop hook that requires email response.
+ * Includes self-healing hooks for resilience.
+ */
+export function buildSalesAgentHooks(callbacks: {
+  onToolCall?: (toolName: string, input: any) => void;
+  onToolResult?: (toolName: string, result: any, success: boolean) => void;
+  onStop?: (reason: string) => void;
+  onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
+  enforcementState?: EnforcementState;
+} = {}) {
+  // Choose stop hook based on whether enforcement is enabled
+  const stopHook = callbacks.enforcementState
+    ? createEnforcingStopHook({ 
+        onStop: callbacks.onStop, 
+        enforcementState: callbacks.enforcementState 
+      })
+    : createStopHook(callbacks);
+  
+  let lastDraftInput: DraftInput | null = null;
+
+  return {
+    PreToolUse: [
+      { matcher: ".*", hooks: [createPreToolHook({
+        onToolCall: callbacks.onToolCall,
+        onDraftInput: (input) => {
+          lastDraftInput = input;
+        }
+      })] }
+    ],
+    PostToolUse: [
+      { matcher: ".*", hooks: [createPostToolHook({
+        onToolResult: callbacks.onToolResult,
+        enforcementState: callbacks.enforcementState,
+        getDraftInput: () => lastDraftInput,
+        setDraftInput: (input) => {
+          lastDraftInput = input;
+        },
+        onEmailDraft: callbacks.onEmailDraft
+      })] }
+    ],
+    PostToolUseFailure: [
+      { hooks: [createPostToolUseFailureHook()] }
+    ],
+    Stop: [
+      { hooks: [stopHook] }
+    ]
+  };
+}

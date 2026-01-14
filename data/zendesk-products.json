@@ -1,0 +1,269 @@
+{
+  "currency": "USD",
+  "products": [
+    {
+      "sku": "ZD-SUITE-TEAM",
+      "name": "Zendesk Suite Team",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Suite plan tier: Team",
+      "price": 55
+    },
+    {
+      "sku": "ZD-SUITE-GROWTH",
+      "name": "Zendesk Suite Growth",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Suite plan tier: Growth",
+      "price": 89
+    },
+    {
+      "sku": "ZD-SUITE-PROFESSIONAL",
+      "name": "Zendesk Suite Professional",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Suite plan tier: Professional",
+      "price": 115
+    },
+    {
+      "sku": "ZD-SUITE-ENTERPRISE",
+      "name": "Zendesk Suite Enterprise",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Suite plan tier: Enterprise (starting at; annual billing)",
+      "price": 169
+    },
+    {
+      "sku": "ZD-SUITE-ENTERPRISE-PLUS",
+      "name": "Zendesk Suite Enterprise Plus",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Suite plan tier: Enterprise Plus (estimated; custom pricing)",
+      "price": 219
+    },
+    {
+      "sku": "ZD-SUPPORT-TEAM",
+      "name": "Zendesk Support Team",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Support plan tier: Team",
+      "price": 19
+    },
+    {
+      "sku": "ZD-SUPPORT-PROFESSIONAL",
+      "name": "Zendesk Support Professional",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Support plan tier: Professional",
+      "price": 55
+    },
+    {
+      "sku": "ZD-SUPPORT-ENTERPRISE",
+      "name": "Zendesk Support Enterprise",
+      "type": "plan",
+      "unit": "per agent/month",
+      "description": "Support plan tier: Enterprise",
+      "price": 115
+    },
+    {
+      "sku": "ZD-SELL-TEAM",
+      "name": "Zendesk Sell Team",
+      "type": "plan",
+      "unit": "per user/month",
+      "description": "Sell plan tier: Team",
+      "price": 19
+    },
+    {
+      "sku": "ZD-SELL-GROWTH",
+      "name": "Zendesk Sell Growth",
+      "type": "plan",
+      "unit": "per user/month",
+      "description": "Sell plan tier: Growth",
+      "price": 55
+    },
+    {
+      "sku": "ZD-SELL-PROFESSIONAL",
+      "name": "Zendesk Sell Professional",
+      "type": "plan",
+      "unit": "per user/month",
+      "description": "Sell plan tier: Professional",
+      "price": 115
+    },
+    {
+      "sku": "ZD-SELL-ENTERPRISE",
+      "name": "Zendesk Sell Enterprise",
+      "type": "plan",
+      "unit": "per user/month",
+      "description": "Sell plan tier: Enterprise",
+      "price": 169
+    },
+    {
+      "sku": "ZD-ADDON-AI-GENERATIVE-SEARCH-EXTENDER",
+      "name": "AI Add-on: Generative Search Extender",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "AI add-on: Generative Search Extender (estimated; Advanced AI bundle or standalone)",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-AI-COPILOT",
+      "name": "AI Add-on: Copilot",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "AI add-on: Copilot",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-AI-AGENTS-ADVANCED",
+      "name": "AI Add-on: AI agents (Advanced)",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "AI add-on: AI agents – Advanced (estimated; base advanced AI bundle)",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-SECURITY-ADPP",
+      "name": "Security Add-on: Advanced Data Privacy and Protection",
+      "type": "add-on",
+      "unit": "account/month",
+      "description": "Security add-on: Advanced Data Privacy and Protection",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-OPS-AGENT-MONTHS",
+      "name": "Ops Add-on: Agent Months",
+      "type": "add-on",
+      "unit": "agent/month",
+      "description": "Ops add-on: Agent Months (starting at; estimated $55-$115 by tier)",
+      "price": 55
+    },
+    {
+      "sku": "ZD-ADDON-OPS-COLLABORATION",
+      "name": "Ops Add-on: Collaboration",
+      "type": "add-on",
+      "unit": "account/month",
+      "description": "Ops add-on: Collaboration (estimated)",
+      "price": 25
+    },
+    {
+      "sku": "ZD-ADDON-OPS-PREMIUM-SANDBOX",
+      "name": "Ops Add-on: Premium Sandbox",
+      "type": "add-on",
+      "unit": "account/month",
+      "description": "Ops add-on: Premium Sandbox (starting at; estimated $1,000+)",
+      "price": 1000
+    },
+    {
+      "sku": "ZD-ADDON-CHANNEL-GUIDE",
+      "name": "Channel Add-on: Help Center (Guide)",
+      "type": "add-on",
+      "unit": "account/month",
+      "description": "Channel add-on: Help Center (Guide) (legacy standalone; estimated $15-$29)",
+      "price": 15
+    },
+    {
+      "sku": "ZD-ADDON-CHANNEL-CHAT-MESSAGING",
+      "name": "Channel Add-on: Live chat and messaging",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "Channel add-on: Live chat and messaging (legacy standalone)",
+      "price": 29
+    },
+    {
+      "sku": "ZD-ADDON-CHANNEL-EXPLORE",
+      "name": "Channel Add-on: Explore",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "Channel add-on: Explore (legacy standalone; estimated $9-$29)",
+      "price": 9
+    },
+    {
+      "sku": "ZD-ADDON-WORKFORCE-WFM",
+      "name": "Workforce Add-on: Workforce Management (WFM)",
+      "type": "add-on",
+      "unit": "agent/month",
+      "description": "Workforce add-on: Workforce Management (WFM)",
+      "price": 25
+    },
+    {
+      "sku": "ZD-ADDON-WORKFORCE-QA",
+      "name": "Workforce Add-on: Quality Assurance (QA)",
+      "type": "add-on",
+      "unit": "agent/month",
+      "description": "Workforce add-on: Quality Assurance (QA)",
+      "price": 35
+    },
+    {
+      "sku": "ZD-ADDON-WORKFORCE-WEM",
+      "name": "Workforce Add-on: Workforce Engagement Management (WEM bundle)",
+      "type": "add-on",
+      "unit": "agent/month",
+      "description": "Workforce add-on: Workforce Engagement Management (WEM bundle)",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-CAPACITY-LIGHT-AGENTS",
+      "name": "Capacity Add-on: Light agents",
+      "type": "add-on",
+      "unit": "agent/month",
+      "description": "Capacity add-on: Light agents (included; $0, tier-capped)",
+      "price": 0
+    },
+    {
+      "sku": "ZD-ADDON-CAPACITY-WHATSAPP-NUMBERS",
+      "name": "Capacity Add-on: WhatsApp numbers",
+      "type": "add-on",
+      "unit": "number/month",
+      "description": "Capacity add-on: WhatsApp numbers (estimated)",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-CAPACITY-STORAGE",
+      "name": "Capacity Add-on: More storage",
+      "type": "add-on",
+      "unit": "per unit/month",
+      "description": "Capacity add-on: More storage (per 500MB data / 25GB files unit)",
+      "price": 72
+    },
+    {
+      "sku": "ZD-ADDON-CAPACITY-HIGH-VOLUME-API",
+      "name": "Capacity Add-on: High volume API",
+      "type": "add-on",
+      "unit": "per agent/month",
+      "description": "Capacity add-on: High volume API (included in Enterprise Plus)",
+      "price": 50
+    },
+    {
+      "sku": "ZD-ADDON-USAGE-VOICE-CREDITS",
+      "name": "Usage Add-on: Voice usage credits",
+      "type": "add-on",
+      "unit": "usage",
+      "description": "Usage add-on: Voice usage credits (starting at; varies by country)",
+      "price": 0.013
+    },
+    {
+      "sku": "ZD-ADDON-USAGE-SUNSHINE-MAU",
+      "name": "Usage Add-on: Sunshine conversations monthly active users",
+      "type": "add-on",
+      "unit": "per 1k MAU",
+      "description": "Usage add-on: Sunshine conversations monthly active users",
+      "price": 100
+    },
+    {
+      "sku": "ZD-ADDON-USAGE-SUNSHINE-NOTIFICATIONS",
+      "name": "Usage Add-on: Sunshine conversations notifications",
+      "type": "add-on",
+      "unit": "per message",
+      "description": "Usage add-on: Sunshine conversations notifications",
+      "price": 0.01
+    },
+    {
+      "sku": "ZD-ADDON-USAGE-AUTOMATED-RESOLUTIONS",
+      "name": "Usage Add-on: Automated resolutions",
+      "type": "add-on",
+      "unit": "usage",
+      "description": "Usage add-on: Automated resolutions (starting at; overage ~$2.00)",
+      "price": 1.5
+    }
+  ]
+}

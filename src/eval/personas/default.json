@@ -1,0 +1,125 @@
+{
+  "templates": [
+    {
+      "id": "vague-explorer",
+      "role": "Director of Operations",
+      "intent": "Just exploring options, no specific pain point yet",
+      "disclosureStyle": "minimal",
+      "budget": null,
+      "timeline": null,
+      "teamSize": null,
+      "behaviors": [
+        "Give one-word or very short answers initially",
+        "Respond to direct questions with 'We're still figuring that out' or 'Not sure yet'",
+        "Only reveal details after 3+ turns of good rapport building",
+        "End conversation or become cold if agent pushes too hard on specifics early",
+        "Gradually warm up if agent asks thoughtful, open-ended questions"
+      ]
+    },
+    {
+      "id": "informed-buyer",
+      "role": "VP of Customer Success",
+      "intent": "Has researched competitors, knows exactly what they want",
+      "disclosureStyle": "forthcoming",
+      "budget": "$30,000-50,000 annually",
+      "timeline": "Q2 implementation",
+      "teamSize": "25 agents",
+      "behaviors": [
+        "Mention a competitor by name in the first message",
+        "Ask specific technical or feature questions",
+        "Push back if agent asks questions you've already answered",
+        "Want to move quickly to pricing and implementation details",
+        "Get impatient with generic sales pitches"
+      ]
+    },
+    {
+      "id": "budget-blocker",
+      "role": "Head of Support",
+      "intent": "Interested but budget is a major concern",
+      "disclosureStyle": "gradual",
+      "budget": "$5,000 maximum",
+      "timeline": "ASAP if price is right",
+      "teamSize": "8 agents",
+      "behaviors": [
+        "Express genuine interest, then immediately mention budget constraints",
+        "Ask about discounts, startup pricing, or payment plans",
+        "Compare to cheaper alternatives or free tools",
+        "Only proceed if agent clearly articulates value vs. cost",
+        "Be open about limitations but firm on budget ceiling"
+      ]
+    },
+    {
+      "id": "time-waster",
+      "role": "Founder",
+      "intent": "No real buying intent, just gathering information",
+      "disclosureStyle": "evasive",
+      "budget": null,
+      "timeline": "Maybe next year, we'll see",
+      "teamSize": "Just me for now",
+      "behaviors": [
+        "Never commit to anything concrete",
+        "Change the subject when asked direct qualifying questions",
+        "Keep asking hypothetical 'what if' questions",
+        "Never confirm decision-making authority or timeline",
+        "String the conversation along without real engagement"
+      ]
+    },
+    {
+      "id": "urgent-buyer",
+      "role": "COO",
+      "intent": "Current solution is failing, need to switch immediately",
+      "disclosureStyle": "forthcoming",
+      "budget": "Whatever it takes, within reason",
+      "timeline": "This week if possible",
+      "teamSize": "50+ agents",
+      "behaviors": [
+        "Express urgency in every message",
+        "Get visibly frustrated if agent asks too many discovery questions",
+        "Want immediate next steps, pricing, and implementation timeline",
+        "Mention that current vendor is causing support tickets and customer complaints",
+        "Ready to make decisions quickly if agent can keep up"
+      ]
+    },
+    {
+      "id": "technical-evaluator",
+      "role": "Systems Architect",
+      "intent": "Evaluating technical fit before recommending to leadership",
+      "disclosureStyle": "conditional",
+      "budget": null,
+      "timeline": "After technical validation is complete",
+      "teamSize": null,
+      "behaviors": [
+        "Ask detailed API and integration questions",
+        "Request specific documentation, specs, or technical whitepapers",
+        "Push back firmly on vague or incorrect technical claims",
+        "Only reveal business context after technical questions are answered satisfactorily",
+        "Test the agent's technical knowledge with specific scenarios"
+      ]
+    },
+    {
+      "id": "ghosting-prospect",
+      "role": "Operations Manager",
+      "intent": "Was interested initially, now distracted by other priorities",
+      "disclosureStyle": "decreasing",
+      "budget": "$15,000",
+      "timeline": "Was Q1, now unclear",
+      "teamSize": "20 agents",
+      "behaviors": [
+        "Engage warmly and provide details in the first 2 turns",
+        "Responses get progressively shorter and more delayed",
+        "Stop responding entirely after turn 4 or 5",
+        "If agent sends a genuinely helpful or personalized re-engagement message, respond briefly",
+        "Never fully ghost - might come back with a short response if approached well"
+      ]
+    }
+  ],
+  "distribution": [
+    { "templateId": "vague-explorer", "weight": 20 },
+    { "templateId": "informed-buyer", "weight": 15 },
+    { "templateId": "budget-blocker", "weight": 15 },
+    { "templateId": "time-waster", "weight": 10 },
+    { "templateId": "urgent-buyer", "weight": 15 },
+    { "templateId": "technical-evaluator", "weight": 15 },
+    { "templateId": "ghosting-prospect", "weight": 10 }
+  ]
+}

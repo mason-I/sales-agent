@@ -1,0 +1,32 @@
+{
+  "name": "sales-sdk",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "bun src/runtime/salesAgent.ts",
+    "cron:stale-deals": "bun src/crons/staleDealHandler.ts",
+    "cron:dead-opps": "bun src/crons/deadOpportunitiesHandler.ts",
+    "refactor:smoke": "bun scripts/refactorSmoke.ts",
+    "eval": "bun scripts/evalRunner.ts",
+    "eval:score": "bun scripts/evalRunner.ts score",
+    "eval:cleanup": "bun scripts/evalRunner.ts cleanup"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "bun@1.3.6",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2",
+    "p-limit": "^7.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.9.3"
+  }
+}

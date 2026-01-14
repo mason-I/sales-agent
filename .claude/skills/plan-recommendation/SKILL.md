@@ -1,0 +1,86 @@
+---
+name: plan-recommendation
+description: Recommend a Zendesk-style plan + add-ons based on discovery inputs. Use when you need to map requirements to SKUs and quantities.
+---
+
+# Plan Recommendation Skill
+
+Use this skill to translate discovery inputs into a recommended plan + add-ons and SKU list.
+
+## Inputs to Collect
+- Agent count (full + light)
+- Channels required (capture full list)
+- Ticket volume and seasonality
+- SLAs and compliance requirements
+- Help center maturity and deflection goals
+- Reporting needs
+- Integrations and security requirements
+
+## Decision Guide
+
+### Plan Family
+- **Suite only**: multi-channel + help center + reporting (v1 scope)
+
+### Add-on Triggers
+- **AI**: deflection, triage, summaries, agent assist
+- **WFM / QA / WEM**: large teams, QA requirements
+- **Security (ADPP)**: enterprise security reviews
+- **Capacity**: high volume API, storage, WhatsApp numbers
+- **Usage**: voice credits, Sunshine MAU/notifications
+
+## Sources of Truth
+- SKU list: `data/zendesk-products.json`
+- Functionality verification: **zendesk-kb-search** (if needed)
+
+## Allowed SKUs (current)
+Plans:
+- ZD-SUITE-TEAM
+- ZD-SUITE-GROWTH
+- ZD-SUITE-PROFESSIONAL
+- ZD-SUITE-ENTERPRISE
+- ZD-SUITE-ENTERPRISE-PLUS
+- ZD-SUPPORT-TEAM
+- ZD-SUPPORT-PROFESSIONAL
+- ZD-SUPPORT-ENTERPRISE
+- ZD-SELL-TEAM
+- ZD-SELL-GROWTH
+- ZD-SELL-PROFESSIONAL
+- ZD-SELL-ENTERPRISE
+
+Add-ons:
+- ZD-ADDON-AI-GENERATIVE-SEARCH-EXTENDER
+- ZD-ADDON-AI-COPILOT
+- ZD-ADDON-AI-AGENTS-ADVANCED
+- ZD-ADDON-SECURITY-ADPP
+- ZD-ADDON-OPS-AGENT-MONTHS
+- ZD-ADDON-OPS-COLLABORATION
+- ZD-ADDON-OPS-PREMIUM-SANDBOX
+- ZD-ADDON-CHANNEL-GUIDE
+- ZD-ADDON-CHANNEL-CHAT-MESSAGING
+- ZD-ADDON-CHANNEL-EXPLORE
+- ZD-ADDON-WORKFORCE-WFM
+- ZD-ADDON-WORKFORCE-QA
+- ZD-ADDON-WORKFORCE-WEM
+- ZD-ADDON-CAPACITY-LIGHT-AGENTS
+- ZD-ADDON-CAPACITY-WHATSAPP-NUMBERS
+- ZD-ADDON-CAPACITY-STORAGE
+- ZD-ADDON-CAPACITY-HIGH-VOLUME-API
+- ZD-ADDON-USAGE-VOICE-CREDITS
+- ZD-ADDON-USAGE-SUNSHINE-MAU
+- ZD-ADDON-USAGE-SUNSHINE-NOTIFICATIONS
+- ZD-ADDON-USAGE-AUTOMATED-RESOLUTIONS
+
+## Output Format
+Return a concise recommendation with SKUs and quantities, for example:
+
+```
+Recommended Plan: ZD-SUITE-GROWTH (10 agents)
+Add-ons: ZD-ADDON-AI-COPILOT (10 agents), ZD-ADDON-WORKFORCE-QA (10 agents)
+Notes: Needs SSO + security review; enterprise add-ons may be required.
+```
+
+## Rules
+- If a feature question is unresolved, call **zendesk-kb-search** first.
+- Keep estimates labeled as “starting at” when required.
+- Recommend the plan that best solves the pain points uncovered in discovery, not a default tier.
+- Use only SKUs that exist in `data/zendesk-products.json`. Do not add implementation/service SKUs.

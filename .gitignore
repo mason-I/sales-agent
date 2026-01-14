@@ -1,0 +1,12 @@
+node_modules/
+.bun/
+.bun-cache/
+
+.env
+.env.*
+!.env.example
+
+data/run-notes/
+data/eval-runs/
+
+*.log
