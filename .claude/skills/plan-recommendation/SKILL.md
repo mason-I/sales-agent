@@ -29,7 +29,7 @@ Use this skill to translate discovery inputs into a recommended plan + add-ons a
 - **Usage**: voice credits, Sunshine MAU/notifications
 
 ## Sources of Truth
-- SKU list: `data/zendesk-products.json`
+- SKU list: Zendesk pricing catalog MCP resource (source of truth)
 - Functionality verification: **zendesk-kb-search** (if needed)
 
 ## Allowed SKUs (current)

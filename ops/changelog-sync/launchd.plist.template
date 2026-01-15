@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.sales-sdk.sync-agent-sdk-changelogs</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>bash</string>
+      <string>-lc</string>
+      <string>cd "{{REPO_PATH}}" &amp;&amp; bun scripts/syncChangelogs.ts --quiet</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>86400</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/sales-sdk-changelog-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/sales-sdk-changelog-sync.error.log</string>
+  </dict>
+</plist>

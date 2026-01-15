@@ -8,6 +8,7 @@
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "../runtime/claude";
+import { buildStreamingPrompt } from "../runtime/promptStream";
 import type { CustomerPersona, Turn, DisclosureStyle } from "./types";
 import { CUSTOMER_RESPONSE_SCHEMA } from "./types";
 
@@ -172,7 +173,7 @@ async function callCustomerLLM(
     let attemptError: string | null = null;
 
     for await (const message of query({
-      prompt: prompts[attempt],
+      prompt: buildStreamingPrompt(prompts[attempt]),
       options: {
         model: "opus",
         executable: "bun",
@@ -272,7 +273,7 @@ async function generateNameAndCompany(seed: number): Promise<{ name: string; com
   let result: { name: string; company: string } | null = null;
 
   for await (const message of query({
-    prompt,
+    prompt: buildStreamingPrompt(prompt),
     options: {
       model: "opus",
       executable: "bun",

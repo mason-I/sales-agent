@@ -11,9 +11,10 @@ required-tools:
 Use this skill to create a **quote package** by attaching HubSpot line items to a deal, then generate a **draft invoice** that serves as the quote in HubSpot.
 
 ## Prerequisites
-- Deal is ready for a pricing package (discovery complete).
+- Deal is ready for a pricing package (prospect asked for pricing or selected a tier).
 - You have selected **plan + add-ons** and quantities.
-- Use SKUs from `data/zendesk-products.json`.
+- Read the pricing catalog via MCP resource before quoting.
+- Use SKUs from the pricing catalog (source of truth).
 
 ## Steps
 
@@ -27,7 +28,7 @@ Use this skill to create a **quote package** by attaching HubSpot line items to 
 
 ## Notes
 - Invoices are used as quotes in HubSpot.
-- Quote creation (line items) and invoice creation both require the Requirement Scoping gate to be satisfied.
+- Include the invoice link in the outbound email after creating the invoice.
 - If an SKU is missing from HubSpot, sync the product catalog first.
-- Do not invent implementation/service SKUs. Use **only** SKUs present in `data/zendesk-products.json`.
+- Do not invent implementation/service SKUs. Use **only** SKUs present in the pricing catalog resource.
 - Always pick **a Suite plan SKU** plus any required add-ons from the allowed list in `plan-recommendation`.

@@ -3,14 +3,17 @@ import { fileURLToPath } from "url";
 import { resolve } from "path";
 import { loadEnv } from "../lib/env";
 import { runPreLlm } from "./preLlm";
-import { checkDealStage } from "../lib/dealStage";
 import { fetchDealProperties, updateDealProperties, fetchDealEngagements, hubspotRequest } from "../lib/hubspot";
 import { createSalesMcpServer } from "../tools/mcp";
 import { getClaudeCodePath, getClaudeEnv } from "./claude";
 import { buildSystemPrompt, buildEventPrompt, type DealContext, type EventContext } from "./systemPrompt";
 import { buildSalesAgentHooks, createEnforcementState } from "./hooks";
-import { STAGE_NAMES, REQUIREMENT_SCOPING_STAGE_ID, STAGE_GATES } from "../config/dealStage";
+import { STAGE_NAMES } from "../config/dealStage";
 import { createRunNote, appendRunNote, buildPlanSummary, buildJudgeSummary, buildExecutionSummary } from "./runNotes";
+import { buildStreamingPrompt } from "./promptStream";
+import { generateDealSummary, updateDealSummary } from "./summary";
+import { deriveCommitmentState, deriveNextActionPolicy, fetchCommitmentArtifacts, evaluateDraftEvidence } from "./commitment";
+import { advanceCommitmentStage, computeCommitmentGap, fetchStageProperties } from "./commitmentStage";
 
 const MCP_PREFIX = "mcp__sales-crm__";
 
@@ -20,6 +23,8 @@ const ALLOWED_TOOLS = [
   "TodoWrite",
   "Task",
   "StructuredOutput",
+  "mcp__list_resources",
+  "mcp__read_resource",
   `${MCP_PREFIX}crm_upsertContact`,
   `${MCP_PREFIX}crm_logEmailDraft`,
   `${MCP_PREFIX}crm_createLineItemsForDeal`,
@@ -40,17 +45,17 @@ const SALES_SUBAGENTS = {
   "kb-researcher": {
     description: "Zendesk KB researcher. Use for Zendesk capability/how-to questions that need deep research.",
     prompt: "Use the zendesk-kb-search skill to answer the capability question. Return grounded details or NOT_FOUND. Never guess.",
-    tools: ["Skill", `${MCP_PREFIX}kb_searchZendesk`, `${MCP_PREFIX}crm_getDealEngagements`]
+    tools: ["Skill", "mcp__list_resources", "mcp__read_resource", `${MCP_PREFIX}kb_searchZendesk`, `${MCP_PREFIX}crm_getDealEngagements`]
   },
   "draft-writer": {
     description: "Email draft specialist. Drafts async-only replies and logs them in HubSpot.",
     prompt: "Use the draft-reply skill to produce and log the email draft. Keep it async-only and compliant. You MUST call crm_logEmailDraft.",
-    tools: ["Skill", `${MCP_PREFIX}crm_logEmailDraft`, `${MCP_PREFIX}crm_getDealEngagements`, `${MCP_PREFIX}crm_updateDealProperties`, `${MCP_PREFIX}crm_addDealNote`]
+    tools: ["Skill", "mcp__list_resources", "mcp__read_resource", `${MCP_PREFIX}crm_logEmailDraft`, `${MCP_PREFIX}crm_getDealEngagements`, `${MCP_PREFIX}crm_updateDealProperties`, `${MCP_PREFIX}crm_addDealNote`]
   },
   "services-quoter": {
     description: "Pricing and invoicing specialist. Creates line items and draft invoices.",
-    prompt: "Use the services-invoicing skill to create line items and a draft invoice. Verify stage gates are met first.",
-    tools: ["Skill", `${MCP_PREFIX}crm_createLineItemsForDeal`, `${MCP_PREFIX}crm_createDraftInvoice`, `${MCP_PREFIX}crm_getDealEngagements`]
+    prompt: "Use the services-invoicing skill to create line items and a draft invoice. Ensure pricing intent is present, catalog has been read, and tier selection is clear.",
+    tools: ["Skill", "mcp__list_resources", "mcp__read_resource", `${MCP_PREFIX}crm_createLineItemsForDeal`, `${MCP_PREFIX}crm_createDraftInvoice`, `${MCP_PREFIX}crm_getDealEngagements`]
   }
 };
 
@@ -117,8 +122,6 @@ async function getContactForDeal(dealId: string): Promise<string | null> {
 }
 
 async function fetchDealContext(dealId: string): Promise<DealContext> {
-  const gateFields = STAGE_GATES[REQUIREMENT_SCOPING_STAGE_ID]?.required || [];
-  
   // Run all HubSpot API calls in parallel for better performance
   const [properties, contactId, engagements] = await Promise.all([
     fetchDealProperties(dealId, [
@@ -126,7 +129,15 @@ async function fetchDealContext(dealId: string): Promise<DealContext> {
       "dealstage",
       "deal_summary",
       "session_id",
-      ...gateFields
+      "sw_primary_pain",
+      "key_challenges",
+      "timeline_for_change",
+      "agents_required",
+      "support_channels",
+      "ticket_volume_per_month",
+      "amount",
+      "closed_lost_reason",
+      "hs_num_of_associated_line_items"
     ]),
     getContactForDeal(dealId),
     fetchDealEngagements(dealId)
@@ -183,13 +194,8 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     throw new Error("dealId is required to run the sales agent");
   }
 
-  // Check deal stage and auto-advance if gates are met
-  const stageContext = await checkDealStage(dealId, { createTasks: false, contactId });
-
   // Fetch full deal context
   const dealContext = await fetchDealContext(dealId);
-  dealContext.progressionGap = stageContext.progressionGap;
-  dealContext.stagesAdvanced = stageContext.stagesAdvanced;
 
   // Get existing session ID for resumption
   sessionId = dealContext.properties?.session_id || null;
@@ -204,6 +210,75 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     fromEmail: event.fromEmail
   };
 
+  // Commitment reasoning (derived state + policy)
+  const artifacts = await fetchCommitmentArtifacts(dealId);
+  let derivedState: Awaited<ReturnType<typeof deriveCommitmentState>> | null = null;
+  let nextActionPolicy: Awaited<ReturnType<typeof deriveNextActionPolicy>> | null = null;
+  try {
+    derivedState = await deriveCommitmentState({
+      dealId,
+      dealSummary: dealContext.dealSummary,
+      dealStageId: dealContext.dealStage,
+      dealStageName: dealContext.dealStageName,
+      artifacts,
+      event: { subject: eventContext.subject, body: eventContext.body }
+    });
+  } catch (error) {
+    console.warn("[SalesAgent] Derived commitment state failed:", error);
+    derivedState = {
+      commitmentCurrent: dealContext.dealStage || "2130118129",
+      commitmentEvidence: [],
+      pricingIntent: "none",
+      buyerIntent: "unknown",
+      fatigueSignals: { present: false, rationale: "unknown" },
+      recentAsks: [],
+      unknowns: []
+    };
+  }
+
+  try {
+    nextActionPolicy = await deriveNextActionPolicy({
+      dealId,
+      derivedState,
+      dealSummary: dealContext.dealSummary,
+      event: { subject: eventContext.subject, body: eventContext.body }
+    });
+  } catch (error) {
+    console.warn("[SalesAgent] Next action policy failed:", error);
+    nextActionPolicy = {
+      mustAnswer: "Address the prospect's latest question or intent directly.",
+      nextCommitment: derivedState.commitmentCurrent,
+      minimalAsk: "If helpful, share one detail that would unblock next steps.",
+      askStyle: "nurture",
+      avoidTopics: [],
+      pricingDirective: { required: derivedState.pricingIntent !== "none", skus: [], notes: null }
+    };
+  }
+
+  const commitmentGap = computeCommitmentGap({
+    currentStageId: dealContext.dealStage || derivedState.commitmentCurrent,
+    properties: dealContext.properties || {},
+    artifacts
+  });
+  dealContext.progressionGap = commitmentGap;
+
+  const commitmentName = STAGE_NAMES[derivedState.commitmentCurrent] || derivedState.commitmentCurrent;
+  const commitmentContext = `## Commitment State (Derived)\n` +
+    `Current commitment: ${commitmentName} (${derivedState.commitmentCurrent})\n` +
+    `Pricing intent: ${derivedState.pricingIntent}\n` +
+    `Buyer intent: ${derivedState.buyerIntent}\n` +
+    `Fatigue signals: ${derivedState.fatigueSignals.present ? "yes" : "no"} (${derivedState.fatigueSignals.rationale})\n` +
+    `Recent asks: ${derivedState.recentAsks.length ? derivedState.recentAsks.join("; ") : "none"}\n` +
+    `Unknowns: ${derivedState.unknowns.length ? derivedState.unknowns.join("; ") : "none"}\n` +
+    `Artifacts: lineItems=${artifacts.lineItems}, invoiceStatus=${artifacts.invoiceStatus || "none"}, invoicePaid=${artifacts.invoicePaid}\n\n` +
+    `## Next Action Policy\n` +
+    `Must answer: ${nextActionPolicy.mustAnswer}\n` +
+    `Next commitment: ${nextActionPolicy.nextCommitment}\n` +
+    `Minimal ask: ${nextActionPolicy.minimalAsk}\n` +
+    `Ask style: ${nextActionPolicy.askStyle}\n` +
+    `Avoid topics: ${nextActionPolicy.avoidTopics.length ? nextActionPolicy.avoidTopics.join("; ") : "none"}\n` +
+    `Pricing directive: ${nextActionPolicy.pricingDirective.required ? "required" : "not required"}${nextActionPolicy.pricingDirective.skus.length ? ` (SKUs: ${nextActionPolicy.pricingDirective.skus.join(", ")})` : ""}`;
+
   // Build prompts
   const systemPrompt = buildSystemPrompt(dealContext, eventContext);
   const userPrompt = buildEventPrompt(eventContext);
@@ -212,9 +287,11 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   const toolCalls: Array<{ tool: string; input: any; timestamp: string }> = [];
   const toolResults: Array<{ tool: string; success: boolean; timestamp: string }> = [];
   let lastDraft: { subject: string; body: string; emailId?: string | null } | null = null;
+  let stopObserved = false;
 
   // Create enforcement state to ensure email responses are sent
   const enforcementState = createEnforcementState(event.source);
+  enforcementState.pricingIntent = derivedState.pricingIntent;
 
   const hooks = buildSalesAgentHooks({
     onToolCall: (tool, input) => {
@@ -227,9 +304,11 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       lastDraft = draft;
     },
     onStop: (reason) => {
+      stopObserved = true;
       console.log(`[SalesAgent] Stopped: ${reason}`);
     },
-    enforcementState
+    enforcementState,
+    additionalContext: commitmentContext
   });
 
   // Create MCP server
@@ -245,6 +324,8 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
 
   let resultSessionId: string | null = sessionId;
   let agentError: string | null = null;
+  let successResult = false;
+  let summaryRefreshed = false;
 
   try {
     const queryOptions = {
@@ -269,7 +350,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     let toolUsage: any = null;
 
     for await (const message of query({
-      prompt: userPrompt,
+      prompt: buildStreamingPrompt(userPrompt),
       options: queryOptions as any
     }) as any) {
       // Capture session ID
@@ -300,6 +381,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       if (message.type === "result") {
         if (message.subtype === "success") {
           // Agent completed successfully
+          successResult = true;
         } else if (message.subtype === "error_max_turns") {
           agentError = "Agent reached maximum turns";
         } else if (message.errors && message.errors.length > 0) {
@@ -325,6 +407,69 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       appendRunNote(note);
     } catch (e) {
       console.error("[SalesAgent] Failed to create run note:", e);
+    }
+
+    let updatedSummary: any = null;
+
+    if (stopObserved && successResult && !summaryRefreshed) {
+      try {
+        const dealSummaryResult = await generateDealSummary({
+          dealId,
+          stageContext: { progressionGap: commitmentGap, derivedState },
+          sessionId: resultSessionId,
+          systemPromptAppend: systemPrompt
+        });
+        updatedSummary = dealSummaryResult.summary;
+        await updateDealSummary(dealId, dealSummaryResult.summary);
+        summaryRefreshed = true;
+        console.log("[SalesAgent] Deal summary refreshed");
+      } catch (e) {
+        console.error("[SalesAgent] Failed to refresh deal summary:", e);
+      }
+    } else if (!successResult) {
+      console.log("[SalesAgent] Deal summary refresh skipped (unsuccessful run)");
+    }
+
+    if (successResult) {
+      try {
+        const propertiesForStage = await fetchStageProperties(dealId);
+        const artifactsForStage = await fetchCommitmentArtifacts(dealId);
+        const invoiceLink = enforcementState.lastInvoiceLink || artifactsForStage.invoiceLink;
+        const draftEvidence = lastDraft
+          ? await evaluateDraftEvidence({ draft: { subject: lastDraft.subject, body: lastDraft.body }, invoiceLink })
+          : null;
+
+        const derivedStateForAdvance = updatedSummary
+          ? await deriveCommitmentState({
+              dealId,
+              dealSummary: updatedSummary,
+              dealStageId: propertiesForStage.dealstage,
+              dealStageName: STAGE_NAMES[String(propertiesForStage.dealstage || "")],
+              artifacts: artifactsForStage,
+              event: { subject: eventContext.subject, body: eventContext.body }
+            })
+          : derivedState;
+
+        const requireDraftForAdvance = ["new_inbound", "reply_to_existing"].includes(event.source);
+        const stageAdvance = await advanceCommitmentStage({
+          dealId,
+          currentStageId: String(propertiesForStage.dealstage || dealContext.dealStage || derivedStateForAdvance.commitmentCurrent),
+          derivedState: derivedStateForAdvance,
+          properties: propertiesForStage,
+          artifacts: { ...artifactsForStage, invoiceLink },
+          draftEvidence,
+          requireDraftForAdvance,
+          lastDraft: lastDraft ? { subject: lastDraft.subject, body: lastDraft.body } : null
+        });
+
+        if (stageAdvance.blockedReason) {
+          console.log(`[SalesAgent] Stage advance blocked: ${stageAdvance.blockedReason}`);
+        } else if (stageAdvance.advanced) {
+          console.log(`[SalesAgent] Stage advanced: ${stageAdvance.from?.name} -> ${stageAdvance.to?.name}`);
+        }
+      } catch (e) {
+        console.error("[SalesAgent] Commitment stage advance failed:", e);
+      }
     }
   } catch (error: any) {
     agentError = error.message || "Unknown error";

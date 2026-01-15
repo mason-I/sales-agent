@@ -3,6 +3,7 @@ import { DEAD_OPP_EVAL_SCHEMA } from "./schemas";
 import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "./claude";
 import { formatSummaryForPrompt } from "./summary";
 import { createSalesMcpServer } from "../tools/mcp";
+import { buildStreamingPrompt } from "./promptStream";
 
 const MCP_PREFIX = "mcp__sales-crm__";
 const KB_TOOL_NAME = `${MCP_PREFIX}kb_searchZendesk`;
@@ -156,7 +157,7 @@ ${summaryText}`;
   const allowedTools = ["StructuredOutput", KB_TOOL_NAME];
 
   for await (const message of query({
-    prompt: userPrompt,
+    prompt: buildStreamingPrompt(userPrompt),
     options: {
       model: "opus",
       executable: "bun",

@@ -16,8 +16,8 @@ import type {
   TrackedEntities,
   ErrorCategory
 } from "./types";
-
-const MAX_CONVERSATION_DURATION_MS = 25 * 60 * 1000; // 25 minutes - increased from 15 to allow full conversations to complete
+import { STAGE_ORDER, STAGE_NAMES } from "../config/dealStage";
+import { deriveCommitmentState, fetchCommitmentArtifacts } from "../runtime/commitment";
 
 type ConversationConfig = {
   runId: string;
@@ -63,31 +63,35 @@ function classifyErrorCategory(errorMessage: string | undefined): ErrorCategory 
 }
 
 async function checkGoalReached(dealId: string): Promise<{ reached: boolean; reason?: string; isLost?: boolean }> {
-  const { fetchDealProperties, hubspotRequest } = await import("../lib/hubspot");
+  const { fetchDealProperties } = await import("../lib/hubspot");
 
   try {
-    const props = await fetchDealProperties(dealId, ["dealstage", "hs_num_of_associated_line_items"]);
+    const props = await fetchDealProperties(dealId, ["dealstage", "deal_summary"]);
     const stage = String(props.dealstage || "");
-    const lineItems = Number(props.hs_num_of_associated_line_items || 0);
 
     if (stage === "closedlost") {
       return { reached: true, reason: "Deal marked closed lost", isLost: true };
     }
 
-    if (stage === "contractsent" || stage === "closedwon") {
-      return { reached: true, reason: `Deal stage ${stage}` };
+    const artifacts = await fetchCommitmentArtifacts(dealId);
+    let derivedCommitment = stage;
+    try {
+      const derived = await deriveCommitmentState({
+        dealId,
+        dealSummary: props.deal_summary,
+        dealStageId: stage,
+        dealStageName: STAGE_NAMES[stage],
+        artifacts
+      });
+      derivedCommitment = derived.commitmentCurrent || stage;
+    } catch {
+      // fall back to current stage
     }
 
-    if (lineItems > 0) {
-      return { reached: true, reason: "Line items created" };
-    }
-
-    const assoc = await hubspotRequest<any>(
-      "GET",
-      `/crm/v4/objects/deals/${dealId}/associations/invoices?limit=1`
-    );
-    if (assoc?.results?.length > 0) {
-      return { reached: true, reason: "Invoice created" };
+    const commitmentIndex = STAGE_ORDER.indexOf(derivedCommitment);
+    const quoteIndex = STAGE_ORDER.indexOf("contractsent");
+    if (quoteIndex !== -1 && commitmentIndex >= quoteIndex) {
+      return { reached: true, reason: `Commitment stage reached: ${derivedCommitment}` };
     }
   } catch {
     // ignore goal check errors
@@ -105,7 +109,6 @@ export async function runConversation(
 ): Promise<ConversationResult> {
   const conversationId = `${config.runId}-${String(config.conversationIndex).padStart(3, "0")}`;
   const startedAt = new Date().toISOString();
-  const conversationStartMs = Date.now();
 
   const transcript: Turn[] = [];
   const turns: TurnNote[] = [];
@@ -207,14 +210,8 @@ export async function runConversation(
     }
 
     if (!agentResult.error && !goalReached) {
-      // Continue conversation until goal reached or timeout
+      // Continue conversation until goal reached
       for (turnNumber = 2; ; turnNumber++) {
-        if (Date.now() - conversationStartMs >= MAX_CONVERSATION_DURATION_MS) {
-          outcome = "timeout";
-          endReason = "Conversation time limit reached";
-          break;
-        }
-
         const loopTurnStart = new Date();
 
         // Customer responds to agent
@@ -233,6 +230,12 @@ export async function runConversation(
 
         if (config.logProgress) {
           console.log(`[Conv ${conversationId}] Turn ${turnNumber} - Customer: "${customerResponse.message.slice(0, 50)}..."`);
+        }
+
+        if (customerResponse.shouldEnd) {
+          outcome = determineOutcome(customerResponse.endReason);
+          endReason = customerResponse.endReason || "Customer ended conversation";
+          break;
         }
 
         // Agent processes reply
@@ -307,12 +310,6 @@ export async function runConversation(
   }
 
   const completedAt = new Date().toISOString();
-
-  // Set final outcome if time limit hit without an explicit timeout
-  if (outcome === "stalled" && Date.now() - conversationStartMs >= MAX_CONVERSATION_DURATION_MS) {
-    outcome = "timeout";
-    endReason = "Conversation time limit reached";
-  }
 
   if (config.logProgress) {
     console.log(`[Conv ${conversationId}] Completed - Outcome: ${outcome}, Turns: ${turns.length}`);

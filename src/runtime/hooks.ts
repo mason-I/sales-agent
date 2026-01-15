@@ -6,6 +6,10 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 const MCP_PREFIX = "mcp__sales-crm__";
+const QUOTE_TOOLS = new Set([
+  `${MCP_PREFIX}crm_createLineItemsForDeal`,
+  `${MCP_PREFIX}crm_createDraftInvoice`
+]);
 
 // =============================================================================
 // Enforcement State
@@ -19,6 +23,10 @@ export type EnforcementState = {
   emailLogged: boolean;
   stopRetryCount: number;
   eventSource: string;
+  pricingIntent?: "explicit" | "implied" | "none";
+  pricingCatalogRead?: boolean;
+  lastInvoiceLink?: string | null;
+  lastInvoiceId?: string | null;
 };
 
 type DraftInput = {
@@ -37,7 +45,11 @@ export function createEnforcementState(eventSource: string): EnforcementState {
   return {
     emailLogged: false,
     stopRetryCount: 0,
-    eventSource
+    eventSource,
+    pricingIntent: "none",
+    pricingCatalogRead: false,
+    lastInvoiceLink: null,
+    lastInvoiceId: null
   };
 }
 
@@ -47,6 +59,10 @@ const MAX_STOP_RETRIES = 2;
  * Auto-correction patterns for common tool input issues.
  * These hooks GUIDE rather than BLOCK - they fix issues and let the agent continue.
  */
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function detectAsyncOnlyViolation(text: string): boolean {
   if (!text) return false;
@@ -152,21 +168,28 @@ function ensureValidKbObjective(input: any, fallback = "Verify Zendesk capabilit
   return { updated: input, changed: false };
 }
 
+const CATALOG_RESOURCE_URIS = new Set([
+  "zendesk://products/catalog",
+  "zendesk://pricing/catalog"
+]);
+
 /**
  * Pre-tool hook for logging and auto-correction.
- * Never blocks - only guides via systemMessage and auto-corrects input.
+ * Blocks quoting/invoicing tools when pricing intent exists but catalog is not read.
  */
 export function createPreToolHook(options: {
   onToolCall?: (toolName: string, input: any) => void;
   onDraftInput?: (input: DraftInput) => void;
+  enforcementState?: EnforcementState;
 }): HookCallback {
   return async (input, toolUseId, context) => {
     const pre = input as PreToolUseHookInput;
     const toolName = pre.tool_name;
-    const toolInput = pre.tool_input || {};
+    const rawToolInput = pre.tool_input;
+    const toolInput = isRecord(rawToolInput) ? rawToolInput : {};
     
     // Log tool call for observability
-    options.onToolCall?.(toolName, toolInput);
+    options.onToolCall?.(toolName, rawToolInput);
     
     // Auto-correct draft input (but don't block)
     if (toolName === `${MCP_PREFIX}crm_logEmailDraft`) {
@@ -198,6 +221,31 @@ export function createPreToolHook(options: {
             hookEventName: pre.hook_event_name,
             permissionDecision: "allow",
             updatedInput: updated
+          }
+        };
+      }
+    }
+
+    if (QUOTE_TOOLS.has(toolName)) {
+      const pricingIntent = options.enforcementState?.pricingIntent || "none";
+      const catalogRead = options.enforcementState?.pricingCatalogRead;
+      if (pricingIntent !== "none" && !catalogRead) {
+        return {
+          systemMessage: "QUOTE BLOCKED: Pricing intent detected but catalog resource not read. Read the pricing catalog before quoting.",
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "deny",
+            permissionDecisionReason: "Pricing intent detected but catalog resource not read."
+          }
+        };
+      }
+      if (pricingIntent === "none") {
+        return {
+          systemMessage: "Pricing intent not detected. Only quote if the prospect explicitly or implicitly requested pricing.",
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "allow",
+            updatedInput: toolInput
           }
         };
       }
@@ -283,6 +331,30 @@ export function createPostToolHook(options: {
         });
         options.setDraftInput?.(null);
       }
+    }
+
+    if (toolName === "mcp__read_resource" && isSuccess && options.enforcementState) {
+      const inputRecord = isRecord(post.tool_input) ? post.tool_input : {};
+      const inputServer = typeof inputRecord.server === "string" ? inputRecord.server : null;
+      const inputUri = typeof inputRecord.uri === "string" ? inputRecord.uri : null;
+      const server = typeof parsed?.server === "string" ? parsed.server : parsed?.data?.server || inputServer;
+      const uri =
+        typeof parsed?.uri === "string"
+          ? parsed.uri
+          : parsed?.contents?.[0]?.uri || parsed?.data?.contents?.[0]?.uri || inputUri;
+      if (server === "sales-crm") {
+        const resolvedUri = typeof uri === "string" ? uri : "";
+        if (CATALOG_RESOURCE_URIS.has(resolvedUri)) {
+          options.enforcementState.pricingCatalogRead = true;
+        }
+      }
+    }
+
+    if (toolName === `${MCP_PREFIX}crm_createDraftInvoice` && isSuccess && options.enforcementState) {
+      const invoiceLink = parsed?.data?.invoiceLink;
+      const invoiceId = parsed?.data?.invoiceId;
+      if (invoiceLink) options.enforcementState.lastInvoiceLink = String(invoiceLink);
+      if (invoiceId) options.enforcementState.lastInvoiceId = String(invoiceId);
     }
     
     // Add helpful context for KB NOT_FOUND
@@ -396,6 +468,7 @@ export function buildSalesAgentHooks(callbacks: {
   onStop?: (reason: string) => void;
   onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
   enforcementState?: EnforcementState;
+  additionalContext?: string | null;
 } = {}) {
   // Choose stop hook based on whether enforcement is enabled
   const stopHook = callbacks.enforcementState
@@ -413,7 +486,8 @@ export function buildSalesAgentHooks(callbacks: {
         onToolCall: callbacks.onToolCall,
         onDraftInput: (input) => {
           lastDraftInput = input;
-        }
+        },
+        enforcementState: callbacks.enforcementState
       })] }
     ],
     PostToolUse: [
@@ -427,6 +501,9 @@ export function buildSalesAgentHooks(callbacks: {
         onEmailDraft: callbacks.onEmailDraft
       })] }
     ],
+    UserPromptSubmit: callbacks.additionalContext
+      ? [{ hooks: [async (input) => ({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: callbacks.additionalContext || "" } })] }]
+      : [],
     PostToolUseFailure: [
       { hooks: [createPostToolUseFailureHook()] }
     ],

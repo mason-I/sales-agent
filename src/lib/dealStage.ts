@@ -173,23 +173,7 @@ export async function checkDealStage(dealId: string, options: { createTasks?: bo
 
   const { createTasks = true, contactId: providedContactId = null } = options;
 
-  const stagesAdvanced: Array<{ from: { id: string; name: string }; to: { id: string; name: string } }> = [];
-  let gateState = await fetchDealGateState(dealId);
-
-  while (gateState.progressionGap === null) {
-    const currentIndex = STAGE_ORDER.indexOf(gateState.dealStageId);
-    if (currentIndex === -1 || currentIndex >= STAGE_ORDER.length - 1) break;
-
-    const advanced = await advanceDealStage(dealId, gateState.dealStageId);
-    if (!advanced) break;
-
-    stagesAdvanced.push({
-      from: { id: gateState.dealStageId, name: gateState.dealStageName },
-      to: { id: advanced.stageId, name: advanced.stageName }
-    });
-
-    gateState = await fetchDealGateState(dealId, gateState.invoicePaid);
-  }
+  const gateState = await fetchDealGateState(dealId);
 
   const progressionGap = gateState.progressionGap;
   const createdTasks: Array<{ field: string; taskId?: string; title?: string; success: boolean; error?: string }> = [];
@@ -220,7 +204,6 @@ export async function checkDealStage(dealId: string, options: { createTasks?: bo
   return {
     dealId,
     currentStage: { id: gateState.dealStageId, name: gateState.dealStageName },
-    stagesAdvanced: stagesAdvanced.length > 0 ? stagesAdvanced : undefined,
     canAdvance: progressionGap === null,
     progressionGap: progressionGap
       ? {

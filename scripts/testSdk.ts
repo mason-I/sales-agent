@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { loadEnv } from "../src/lib/env.js";
 import { getClaudeCodePath, getClaudeEnv } from "../src/runtime/claude.js";
+import { buildStreamingPrompt } from "../src/runtime/promptStream.js";
 
 loadEnv();
 
@@ -15,12 +16,13 @@ async function test() {
         pathToClaudeCodeExecutable: getClaudeCodePath(),
         env: getClaudeEnv(),
         systemPrompt: { type: "preset", preset: "claude_code", append: "You are a test agent." },
+        settingSources: ["project", "user"] as any,
     };
 
     try {
         console.log("Starting SDK query...");
         for await (const message of query({
-            prompt: "Say 'SDK_TEST_OK'",
+            prompt: buildStreamingPrompt("Say 'SDK_TEST_OK'"),
             options: options as any
         })) {
             console.log("Message:", JSON.stringify(message, null, 2));

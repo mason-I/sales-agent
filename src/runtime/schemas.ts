@@ -246,6 +246,100 @@ export const DEAD_OPP_EVAL_SCHEMA = {
   ]
 } as const;
 
+const COMMITMENT_ENUM = [
+  "2130118129", // Expressed Commercial Intent
+  "2182866374", // Admitted Pain / Gap
+  "2185655765", // Defined Scope & Impact
+  "2388431315", // Established Timeline
+  "2390248940", // Confirmed Agent Count
+  "2388431316", // Confirmed Support Channels
+  "2388431317", // Pricing Discussed
+  "2387718587", // Selected Tier
+  "contractsent", // Quote Sent
+  "closedwon", // Paid
+  "closedlost" // Closed Lost
+] as const;
+
+export const DERIVED_STATE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    commitmentCurrent: { type: "string", enum: COMMITMENT_ENUM },
+    commitmentEvidence: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          commitment: { type: "string", enum: COMMITMENT_ENUM },
+          evidence: { type: "string", minLength: 1, maxLength: 500 }
+        },
+        required: ["commitment", "evidence"]
+      }
+    },
+    pricingIntent: { type: "string", enum: ["explicit", "implied", "none"] },
+    buyerIntent: {
+      type: "string",
+      enum: ["product_question", "pricing_question", "objection", "implementation", "stop_contact", "unknown"]
+    },
+    fatigueSignals: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        present: { type: "boolean" },
+        rationale: { type: "string", minLength: 1, maxLength: 500 }
+      },
+      required: ["present", "rationale"]
+    },
+    recentAsks: { type: "array", items: { type: "string" } },
+    unknowns: { type: "array", items: { type: "string" } }
+  },
+  required: [
+    "commitmentCurrent",
+    "commitmentEvidence",
+    "pricingIntent",
+    "buyerIntent",
+    "fatigueSignals",
+    "recentAsks",
+    "unknowns"
+  ]
+} as const;
+
+export const NEXT_ACTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    mustAnswer: { type: "string", minLength: 1, maxLength: 600 },
+    nextCommitment: { type: "string", enum: COMMITMENT_ENUM },
+    minimalAsk: { type: "string", minLength: 1, maxLength: 300 },
+    askStyle: { type: "string", enum: ["question", "cta", "nurture", "close"] },
+    avoidTopics: { type: "array", items: { type: "string" } },
+    pricingDirective: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        required: { type: "boolean" },
+        skus: { type: "array", items: { type: "string" } },
+        notes: { anyOf: [{ type: "string", maxLength: 300 }, { type: "null" }] }
+      },
+      required: ["required", "skus", "notes"]
+    }
+  },
+  required: ["mustAnswer", "nextCommitment", "minimalAsk", "askStyle", "avoidTopics", "pricingDirective"]
+} as const;
+
+export const DRAFT_EVIDENCE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    pricingIncluded: { type: "boolean" },
+    pricingEvidence: { anyOf: [{ type: "string", maxLength: 200 }, { type: "null" }] },
+    invoiceLinkIncluded: { type: "boolean" },
+    invoiceEvidence: { anyOf: [{ type: "string", maxLength: 200 }, { type: "null" }] }
+  },
+  required: ["pricingIncluded", "pricingEvidence", "invoiceLinkIncluded", "invoiceEvidence"]
+} as const;
+
 export const RUN_NOTE_INSIGHTS_SCHEMA = {
   type: "object",
   additionalProperties: false,

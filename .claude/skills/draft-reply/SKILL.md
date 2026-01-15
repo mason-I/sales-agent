@@ -8,11 +8,11 @@ required-tools:
 # Email Drafting
 
 ## Steps
-1. Review the rules below to understand tone, style, and methodology
-2. Draft the email content following SPIN/BANT principles
+1. Review the derived commitment state + next-action policy in the prompt context.
+2. Draft the email to answer the prospect's immediate intent first, then add ONE minimal steering ask if needed.
 3. **CRITICAL: You MUST call the tool** `crm_logEmailDraft` to log the email draft to HubSpot.
 
-Tool input (structured, 2–3 questions max):
+Tool input (structured, 0–2 questions recommended):
 ```
 {
   "contactId": "<HubSpot contact ID>",
@@ -22,8 +22,7 @@ Tool input (structured, 2–3 questions max):
     "intro": "<short opener + context, no questions>",
     "questions": [
       "<question 1>",
-      "<question 2>",
-      "<question 3 (optional)>"
+      "<question 2 (optional)>"
     ],
     "closing": "<short close + thanks, no questions>"
   }
@@ -33,21 +32,23 @@ Tool input (structured, 2–3 questions max):
 **Parameters:**
 - `subject`: Email subject line (required)
 - `bodyParts.intro`: Short opener + context (no questions)
-- `bodyParts.questions`: Array of 2–3 questions only
+- `bodyParts.questions`: Array of 0–2 questions only (0 is valid)
 - `bodyParts.closing`: Short close + thanks (no questions)
 
 ## Rules
 
 ### Sales Methodologies
-SPIN selling and BANT are your guiding methodologies throughout the qualification and proposal process, and should guide you in phrasing and asking the right questions.
+Use SPIN/BANT as a mental model, but prioritize the derived policy and the prospect's immediate intent.
 
 ### Drafting a response - intent, tone, verbosity and formatting
-Consider the purpose of the email and what you want to achieve - that guides the questions we ask. Your choice of email content will be determined by the tasks and what we’re doing.
+Answer first. Then make one minimal steering move if it helps advance the next commitment. If no ask is needed, use 0 questions.
+- If you ask a question, frame it as “So I can help you [do X], [question]”.
 
 ### Tooling & Facts
 - If a prior task used **zendesk-kb-search**, incorporate the grounded answer and cite the provided links briefly.
 - If the KB search returned **NOT_FOUND**, do **not** guess. Ask a targeted follow-up question instead.
 - If a prior task used **objection-handling**, incorporate the recommended framing and the follow-up question.
+- If pricing is requested, read the pricing catalog via MCP resource before quoting.
 
 ### Tone
 Always use a professional yet casual tone.
@@ -56,7 +57,7 @@ Always use a professional yet casual tone.
 - Friendly, confident, and practical. Keep sentences short and clear.
 - Emphasize **fast time to value**, **easy setup**, and **growth-ready** outcomes.
 - Use plain language. Avoid enterprise-heavy jargon, long procurement talk, or complex security phrasing unless asked.
-- Keep the ask lightweight: 2-3 targeted questions max, and offer an async next step.
+- Keep the ask lightweight: 0-1 targeted questions max (0 is valid).
 - If the prospect requires phone-only or a live meeting, draft a polite decline explaining we operate async-only for efficiency and consistency. Offer to continue the conversation via email.
 - Zendesk-style phrasing cues: "works out of the box," "quick to set up," "built to last," and "committed to your success."
 
@@ -93,7 +94,7 @@ Hi Kate,
 
 Thanks for the context on how you handle support today. That helps a lot.
 
-To recommend a plan that fits a small team and gets you up and running quickly, could you share your agent count and which support channels matter most?
+So I can recommend the right plan, how many agents will need access?
 
 Thanks,
 Zendesk

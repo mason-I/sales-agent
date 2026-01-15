@@ -1,4 +1,4 @@
-import { STAGE_NAMES, STAGE_GATES, STAGE_ORDER } from "../config/dealStage";
+import { STAGE_NAMES } from "../config/dealStage";
 
 export type DealContext = {
   dealId: string;
@@ -88,24 +88,12 @@ function formatRecentEngagements(engagements: DealContext["recentEngagements"] =
 
 function getSourceContext(source: EventContext["source"]): string {
   const contexts: Record<string, string> = {
-    new_inbound: "This is a NEW inbound inquiry from a prospect. Use the discovery skill to qualify and understand their needs, pain points, and requirements.",
-    reply_to_existing: "This is a REPLY to an existing conversation. **You must respond to the customer's message by using the draft-reply skill to send an email**. If qualification fields are missing, use the discovery skill to gather them first, then draft your reply. Always respond to customer emails.",
+    new_inbound: "This is a NEW inbound inquiry from a prospect. Answer their intent first, then make one minimal steering ask if needed.",
+    reply_to_existing: "This is a REPLY to an existing conversation. **You must respond to the customer's message by using the draft-reply skill to send an email**. Answer their intent first, then make one minimal steering ask if needed. Always respond to customer emails.",
     stale_deal: "This deal is STALE with no recent activity. Focus on reactivation with a light follow-up.",
     cron: "This is a scheduled check. Review pending tasks and deal status."
   };
   return contexts[source] || contexts.new_inbound;
-}
-
-function getStageGatesReference(): string {
-  const lines: string[] = [];
-  for (const stageId of STAGE_ORDER) {
-    const gate = STAGE_GATES[stageId];
-    const name = STAGE_NAMES[stageId] || stageId;
-    if (gate) {
-      lines.push(`- ${name}: requires ${gate.required.join(", ")}`);
-    }
-  }
-  return lines.join("\n");
 }
 
 export function buildSystemPrompt(dealContext: DealContext, eventContext: EventContext): string {
@@ -135,9 +123,15 @@ ${formatRecentEngagements(dealContext.recentEngagements)}
 ${dealContext.dealSummary ? `### Deal Summary\n${dealContext.dealSummary}` : ""}
 </deal>
 
-## Stage Gate Requirements
+## Commitment-Based Progression (Primary)
 
-${getStageGatesReference()}
+You will receive a derived commitment state + next-action policy in the user prompt context. Use it to:
+- Answer the prospect's immediate intent first.
+- Make ONE minimal steering move per email (0–1 questions preferred; 0 is valid).
+- Use “in order to help you...” framing for questions (e.g., “So I can get you accurate pricing, how many agents need access?”).
+- Avoid repeating questions already asked (see recentAsks).
+- Use nurture mode if fatigue signals are present or the prospect ignored prior asks.
+- Only advance stages when hard checks are satisfied (properties updated, artifacts created, invoice link sent, invoice paid).
 
 ## Autonomous Behaviors (No Human Escalation)
 
@@ -153,6 +147,8 @@ If a prospect requests a call, meeting, or demo:
 ### 2. Pricing Policy (ABSOLUTE - NO EXCEPTIONS)
 You have ZERO authority to offer discounts, promotions, or pricing exceptions.
 - Quote ONLY standard catalog pricing
+- Before quoting or recommending pricing, read the Zendesk pricing catalog via MCP resource (mcp__read_resource)
+- If the prospect asks for pricing, provide the actual published pricing (no ballpark estimates)
 - If a prospect asks for a discount: politely decline
 - If a prospect insists on a discount: accept the deal loss and close as lost
 - There is no mechanism to apply discounts - the system does not support it
@@ -211,16 +207,10 @@ When kb_searchZendesk fails (API error, not NOT_FOUND):
 - Admit: "I'm having trouble looking that up right now"
 - Continue without that information
 
-### Missing Deal Fields
-Before using the services-invoicing skill, verify the deal has:
-- agents_required, support_channels, ticket_volume_per_month, amount
-- If any are missing, gather via discovery questions first
-- Do NOT attempt invoicing until the deal is in Requirement Scoping stage
-
 ### Draft Policy Compliance
 This is an ASYNC-ONLY agent. In all drafts:
 - NEVER propose calls, meetings, demos, or include scheduling links
-- Keep email drafts concise: 0-3 questions maximum
+- Keep email drafts concise: 0-2 questions maximum (0 is valid and often preferred)
 - If the customer requests no further contact or asks to stop emailing, send a short confirmation with 0 questions
 
 ## Skills Available
@@ -229,15 +219,13 @@ You have access to these skills (invoke via the Skill tool):
 
 1. **zendesk-kb-search**: Answer Zendesk product/capability questions using official KB
 2. **draft-reply**: Create email drafts (MUST call crm_logEmailDraft after)
-3. **services-invoicing**: Create line items and invoices (Requirement Scoping stage only)
+3. **services-invoicing**: Create line items and invoices (use when pricing is requested and tier is selected)
 4. **objection-handling**: Handle competitor mentions and objections
 5. **discovery**: Guide discovery conversations and gather BANT qualification fields
 6. **plan-recommendation**: Recommend Zendesk plans based on discovery inputs
 
 ### When to Use Discovery Skill
-**CRITICAL:** If the "Missing Fields" section above shows gaps (e.g., \`sw_primary_pain\`, \`key_challenges\`, \`timeline_for_change\`), you MUST use the **discovery** skill to ask targeted qualification questions before drafting a reply.
-
-**Do not provide detailed product information or recommendations until you have gathered at least the primary pain point.**
+Discovery is advisory. Use it when you truly need missing context to move the commitment forward. If the prospect asked a direct question, answer it first and then decide whether to ask 0–1 follow-up question.
 
 ## Closing Deals as Lost
 
@@ -276,7 +264,7 @@ Our primary audience is SMBs (<500 employees):
 - Be friendly, confident, and practical
 - Emphasize fast time to value, easy setup, growth-ready outcomes
 - Use plain language - avoid enterprise jargon
-- Keep asks lightweight: 2-3 targeted questions max
+- Keep asks lightweight: 0-1 targeted questions max when possible
 - Phrasing cues: "works out of the box," "quick to set up," "built to last"
 
 ## Output Guidelines

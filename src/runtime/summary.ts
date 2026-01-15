@@ -3,6 +3,7 @@ import { DEAL_SUMMARY_SCHEMA } from "./schemas";
 import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "./claude";
 import { fetchDealEngagements, fetchDealProperties, updateDealProperties } from "../lib/hubspot";
 import { STAGE_NAMES } from "../config/dealStage";
+import { buildStreamingPrompt } from "./promptStream";
 
 const SUPPORT_CHANNEL_VALUES = new Set([
   "email",
@@ -223,7 +224,7 @@ latestComms requirements:
   let structured: any = null;
 
   for await (const message of query({
-    prompt: summaryPrompt,
+    prompt: buildStreamingPrompt(summaryPrompt),
     options: {
       model: "opus",
       resume: sessionId || undefined,

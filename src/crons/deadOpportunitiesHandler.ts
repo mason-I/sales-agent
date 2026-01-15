@@ -9,7 +9,6 @@ import {
 import { generateDealSummary, updateDealSummary } from "../runtime/summary";
 import { evaluateDeadOpportunity } from "../runtime/deadOppEvaluation";
 import { QUALIFICATION_STAGE_ID } from "../config/dealStage";
-import { checkDealStage } from "../lib/dealStage";
 import { runSalesAgent } from "../runtime/salesAgent";
 import { createSalesMcpServer } from "../tools/mcp";
 
@@ -176,7 +175,7 @@ ${summarySnippet}
 Guidance:
 - Explain why we are reaching out again now (timing or resolved feature gap).
 - Reference the original blocker and address it if possible.
-- Ask 2-3 targeted, async-friendly questions.
+- Ask 0-1 targeted, async-friendly question when helpful.
 - Do not propose calls or meetings.`;
 }
 
@@ -226,7 +225,6 @@ async function processDeal({
   if (!dryRun && evaluationResult.decision === "RE-ENGAGE") {
     try {
       await updateDealProperties(dealId, { dealstage: QUALIFICATION_STAGE_ID });
-      await checkDealStage(dealId, { createTasks: true });
 
       const contactId = await getContactForDeal(dealId);
       await runSalesAgent({

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.7
+
+- Updated to parity with Claude Code v2.1.7
+
+## 0.2.6
+
+- Updated to parity with Claude Code v2.1.6
+- Added `claudeCodeVersion` field to `package.json` for programmatically determining compatible CLI version
+
+## 0.2.5
+
+- Updated to parity with Claude Code v2.1.5
+
+## 0.2.4
+
+- Updated to parity with Claude Code v2.1.4
+
+## 0.2.3
+
+- Updated to parity with Claude Code v2.1.3
+
 ## 0.2.0 (2026-01-07)
 
 - Added `error` field to `McpServerStatus` for failed MCP server connections

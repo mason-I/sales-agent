@@ -10,10 +10,10 @@ description: Use when conducting discovery to understand prospect pain points, c
 
 ## When to Use
 
-- New prospect inquiry - understand their support stack and volume
-- Follow-up conversations - deepen understanding of needs and blockers
-- Qualifying BANT gaps - budget, authority, need, or timeline is missing
-- Before drafting recommendations - ensure plan/add-on fit
+- Use when missing context is blocking meaningful progression
+- Early-stage inquiries where you need to understand support stack and volume
+- Follow-ups where answers are incomplete or inconsistent
+- Before drafting recommendations when plan/add-on fit is unclear
 
 ---
 
@@ -148,7 +148,7 @@ Do **not** recommend yet. Capture signals for the plan-recommendation skill:
 
 ## 10. Execution Rules
 
-1. **Gap Fill:** Before responding, check what BANT fields are missing. Ask 2–3 targeted questions max per reply.
+1. **Gap Assessment (Not Mandatory):** Check what BANT fields are missing, but do NOT automatically ask. If appropriate, ask 0–1 targeted question.
 2. **Persist Findings:** As soon as you capture a missing field (e.g., `sw_primary_pain`, `key_challenges`), you MUST call `crm_updateDealProperties` to save it to HubSpot.
 3. **Depth Over Breadth:** Follow a thread (Situation → Problem → Implication) before switching topics.
 4. **No Prescribing:** Do not suggest solutions until you understand pain + scale + constraints.
@@ -162,4 +162,4 @@ If objections or competitor mentions arise, use the **objection-handling** skill
 Provide:
 1) **Concise summary** of known facts
 2) **Missing gaps** (bulleted)
-3) **Questions (max 3)** — short, answerable, and prioritized
+3) **Questions (max 1)** — short, answerable, and prioritized (0 is valid)

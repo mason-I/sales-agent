@@ -3,6 +3,7 @@ import { join } from "path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { RUN_NOTE_INSIGHTS_SCHEMA } from "./schemas";
 import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "./claude";
+import { buildStreamingPrompt } from "./promptStream";
 
 type PlanSummary = {
   intent: string | null;
@@ -227,7 +228,7 @@ ${JSON.stringify(
   let structured: any = null;
 
   for await (const message of query({
-    prompt,
+    prompt: buildStreamingPrompt(prompt),
     options: {
       model: "opus",
       executable: "bun",

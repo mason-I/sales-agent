@@ -3,8 +3,7 @@ import { z } from "zod";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { hubspotRequest, updateTask, createTask, updateContact, createDealNote, getContactAssociations, fetchDealEngagements, fetchTask, fetchDealProperties } from "../lib/hubspot";
-import { checkDealStage } from "../lib/dealStage";
-import { STAGE_GATES, REQUIREMENT_SCOPING_STAGE_ID, QUALIFICATION_STAGE_ID, DISCOVERY_STAGE_ID } from "../config/dealStage";
+import { STAGE_ORDER } from "../config/dealStage";
 
 const productCatalogPath = resolve(process.cwd(), "data", "zendesk-products.json");
 let PRODUCT_CATALOG: { currency: string; products: Array<{ sku: string }> } = { currency: "USD", products: [] };
@@ -16,14 +15,7 @@ try {
 }
 const ALLOWED_SKUS = new Set((PRODUCT_CATALOG.products || []).map((p) => p.sku));
 
-const DEAL_STAGE_IDS = [
-  QUALIFICATION_STAGE_ID,
-  DISCOVERY_STAGE_ID,
-  REQUIREMENT_SCOPING_STAGE_ID,
-  "contractsent",
-  "closedwon",
-  "closedlost"
-] as const;
+const DEAL_STAGE_IDS = [...STAGE_ORDER, "closedlost"] as const;
 
 const SUPPORT_CHANNEL_IDS = [
   "email",
@@ -41,41 +33,6 @@ const SUPPORT_CHANNEL_IDS = [
   "closed_tickets"
 ] as const;
 
-function getRequirementScopingFields() {
-  return STAGE_GATES[REQUIREMENT_SCOPING_STAGE_ID]?.required || [];
-}
-
-async function fetchDealForGate(dealId: string) {
-  const properties = ["dealstage", ...getRequirementScopingFields()].join(",");
-  return await hubspotRequest<any>("GET", `/crm/v3/objects/deals/${dealId}?properties=${properties}`);
-}
-
-function validateRequirementScoping(deal: any) {
-  const props = deal?.properties || {};
-  if (props.dealstage !== REQUIREMENT_SCOPING_STAGE_ID) {
-    return { ok: false, reason: `Deal must be in Requirement Scoping stage. Current stage ID: ${props.dealstage}` };
-  }
-
-  const required = getRequirementScopingFields();
-  const missing: string[] = [];
-  for (const field of required) {
-    const value = props[field];
-    if (!value || (typeof value === "string" && value.trim() === "")) {
-      missing.push(field);
-      continue;
-    }
-    if (field === "amount") {
-      const numValue = Number(value);
-      if (isNaN(numValue) || numValue <= 0) missing.push(field);
-    }
-  }
-
-  if (missing.length > 0) {
-    return { ok: false, reason: `Required deal fields incomplete: ${missing.join(", ")}`, missingFields: missing };
-  }
-
-  return { ok: true };
-}
 
 async function findProductBySku(sku: string) {
   const body = {
@@ -298,7 +255,7 @@ async function searchZendeskKb(objective: string, maxResults = 10) {
 }
 
 export function createSalesMcpServer() {
-  return createSdkMcpServer({
+  const server = createSdkMcpServer({
     name: "sales-crm",
     version: "1.0.0",
     tools: [
@@ -329,7 +286,7 @@ export function createSalesMcpServer() {
       ),
       tool(
         "crm_logEmailDraft",
-        "Create a HubSpot email record and associate it with a contact and deal. Requires structured bodyParts with 0-3 questions.",
+        "Create a HubSpot email record and associate it with a contact and deal. Requires structured bodyParts with 0-3 questions (0 is valid).",
         {
           contactId: z.string().min(1).optional(),
           dealId: z.string().min(1),
@@ -408,7 +365,7 @@ export function createSalesMcpServer() {
       ),
       tool(
         "crm_createLineItemsForDeal",
-        "Create HubSpot line items from SKUs and associate them to a deal. Validates stage gate and SKU allowlist.",
+        "Create HubSpot line items from SKUs and associate them to a deal. Uses SKU allowlist and catalog pricing only.",
         {
           dealId: z.string().min(1),
           items: z.array(
@@ -421,12 +378,6 @@ export function createSalesMcpServer() {
         },
         async ({ dealId, items }) => {
           try {
-            const deal = await fetchDealForGate(dealId);
-            const validation = validateRequirementScoping(deal);
-            if (!validation.ok) {
-              return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: validation.reason, missingFields: validation.missingFields }) }] };
-            }
-
             const created: Array<{ sku: string; lineItemId?: string; ok: boolean; error?: string }> = [];
             for (const item of items) {
               if (!ALLOWED_SKUS.has(item.sku)) {
@@ -457,19 +408,13 @@ export function createSalesMcpServer() {
       ),
       tool(
         "crm_createDraftInvoice",
-        "Create an invoice for a deal and line items. Invoice is immediately payable (no human review). Requires Requirement Scoping gate.",
+        "Create an invoice for a deal and line items. Invoice is immediately payable (no human review).",
         {
           dealId: z.string().min(1),
           lineItemIds: z.array(z.string().min(1)).min(1)
         },
         async ({ dealId, lineItemIds }) => {
           try {
-            const deal = await fetchDealForGate(dealId);
-            const validation = validateRequirementScoping(deal);
-            if (!validation.ok) {
-              return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: validation.reason, missingFields: validation.missingFields }) }] };
-            }
-
             const invoice = await createInvoice(dealId, lineItemIds, PRODUCT_CATALOG.currency || "USD");
             const invoiceId = invoice?.id;
             const invoiceLink = invoice?.properties?.hs_invoice_url || invoice?.properties?.hs_invoice_link || "";
@@ -480,12 +425,6 @@ export function createSalesMcpServer() {
                 // ignore note failure
               }
               return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "Invoice creation failed" }) }] };
-            }
-
-            try {
-              await checkDealStage(dealId, { createTasks: false });
-            } catch {
-              // ignore stage advancement errors
             }
 
             // Invoice is immediately payable - no review task needed
@@ -529,7 +468,7 @@ export function createSalesMcpServer() {
         "Update allowed HubSpot deal properties with strict types and enums. Use for qualification and stage updates.",
         {
           dealId: z.string().min(1),
-          dealstage: z.enum(DEAL_STAGE_IDS).optional().describe("HubSpot deal stage ID"),
+          dealstage: z.enum(DEAL_STAGE_IDS as [string, ...string[]]).optional().describe("HubSpot deal stage ID"),
           dealname: z.string().optional().describe("Deal name"),
           sw_primary_pain: z.string().optional().describe("Primary pain point the customer is experiencing"),
           key_challenges: z.string().optional().describe("Specific obstacles or friction points increasing cost or time spent"),
@@ -725,4 +664,31 @@ export function createSalesMcpServer() {
       )
     ]
   });
+
+  const catalogUri = "zendesk://products/catalog";
+  const pricingUri = "zendesk://pricing/catalog";
+  const catalogPayload = JSON.stringify(PRODUCT_CATALOG || { currency: "USD", products: [] }, null, 2);
+
+  try {
+    server.instance.resource(
+      "Zendesk Product Catalog",
+      catalogUri,
+      { description: "Zendesk pricing catalog (source of truth).", mimeType: "application/json" },
+      async () => ({
+        contents: [{ uri: catalogUri, mimeType: "application/json", text: catalogPayload }]
+      })
+    );
+    server.instance.resource(
+      "Zendesk Pricing Catalog",
+      pricingUri,
+      { description: "Alias for Zendesk pricing catalog.", mimeType: "application/json" },
+      async () => ({
+        contents: [{ uri: pricingUri, mimeType: "application/json", text: catalogPayload }]
+      })
+    );
+  } catch {
+    // Ignore duplicate resource registration
+  }
+
+  return server;
 }

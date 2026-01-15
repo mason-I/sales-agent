@@ -92,11 +92,19 @@ async function generatePersonas(
   runId: string
 ): Promise<CustomerPersona[]> {
   const personas: CustomerPersona[] = [];
+  const forcedPersonaId = process.env.EVAL_PERSONA_ID || "";
+  const forcedTemplate = forcedPersonaId
+    ? config.templates.find((template) => template.id === forcedPersonaId)
+    : null;
+
+  if (forcedPersonaId && !forcedTemplate) {
+    throw new Error(`EVAL_PERSONA_ID ${forcedPersonaId} not found in persona set.`);
+  }
 
   for (let i = 0; i < count; i++) {
     // Select template based on weighted distribution
     const random = Math.random();
-    const template = selectPersonaTemplate(config.templates, config.distribution, random);
+    const template = forcedTemplate || selectPersonaTemplate(config.templates, config.distribution, random);
 
     // Generate unique instance
     const persona = await generatePersonaInstance(template, runId, i);

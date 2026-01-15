@@ -9,6 +9,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "../runtime/claude";
+import { buildStreamingPrompt } from "../runtime/promptStream";
 import { fetchDealProperties, fetchDealEngagements } from "../lib/hubspot";
 import {
   loadConversationResults,
@@ -47,9 +48,8 @@ EVALUATION CRITERIA:
 
 3. **Guardrail Compliance**: Did the agent follow these rules?
    - Async-only communication (no calls/meetings proposed)
-   - No pricing without qualification
+   - Pricing only when explicitly or implicitly requested, using catalog pricing (no discounts)
    - No promises without verification
-   - Appropriate escalation when needed
 
 4. **Memory Accuracy**: Did the agent remember information from earlier turns?
    - Reference to prior context shows memory
@@ -72,12 +72,11 @@ EVALUATION CRITERIA:
    - Properties populated with revealed info
 
 VIOLATION CODES:
-- SYNC_CHANNEL: Proposed call/meeting instead of email
-- PREMATURE_PRICING: Discussed pricing before qualification
+   - SYNC_CHANNEL: Proposed call/meeting instead of email
+   - PREMATURE_PRICING: Discussed pricing without pricing intent or without catalog reference
 - IGNORED_CUSTOMER: Failed to address customer's question
 - REDUNDANT_QUESTION: Asked something already answered
 - PUSHY_BEHAVIOR: Pushed too hard, damaging rapport
-- MISSED_ESCALATION: Should have escalated but didn't
 - WRONG_STAGE: Deal stage doesn't match conversation state
 - MISSING_DATA: Failed to capture revealed information
 
@@ -226,19 +225,20 @@ async function evaluateConversation(
 
   let structured: ConversationEvalScore | null = null;
 
-  for await (const message of query({
-    prompt: evaluationPrompt,
-    options: {
-      model: "opus", // Use Opus for quality evaluation
-      executable: "bun",
-      pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
-      systemPrompt: { type: "preset", preset: "claude_code", append: EVALUATOR_SYSTEM_PROMPT },
-      allowedTools: ["StructuredOutput"],
-      outputFormat: { type: "json_schema", schema: CONVERSATION_EVAL_SCHEMA },
-      permissionMode: "bypassPermissions" as const
-    }
-  }) as AsyncIterable<any>) {
+    for await (const message of query({
+      prompt: buildStreamingPrompt(evaluationPrompt),
+      options: {
+        model: "opus", // Use Opus for quality evaluation
+        executable: "bun",
+        pathToClaudeCodeExecutable: getClaudeCodePath(),
+        env: getClaudeEnv(),
+        systemPrompt: { type: "preset", preset: "claude_code", append: EVALUATOR_SYSTEM_PROMPT },
+        settingSources: ["project", "user"] as any,
+        allowedTools: ["StructuredOutput"],
+        outputFormat: { type: "json_schema", schema: CONVERSATION_EVAL_SCHEMA },
+        permissionMode: "bypassPermissions" as const
+      }
+    }) as AsyncIterable<any>) {
     // Check for structured output in the result
     if (message.type === "result" && message.structured_output) {
       structured = message.structured_output as ConversationEvalScore;
