@@ -9,19 +9,23 @@ import { getClaudeCodePath, getClaudeEnv } from "./claude";
 import { buildSystemPrompt, buildEventPrompt, type DealContext, type EventContext } from "./systemPrompt";
 import { buildSalesAgentHooks, createEnforcementState } from "./hooks";
 import { STAGE_NAMES } from "../config/dealStage";
-import { createRunNote, appendRunNote, buildPlanSummary, buildJudgeSummary, buildExecutionSummary } from "./runNotes";
+import { createRunNote, appendRunNote, buildPlanSummary, buildJudgeSummary, buildExecutionSummary, type TaskLifecycleSummary } from "./runNotes";
 import { buildStreamingPrompt } from "./promptStream";
 import { generateDealSummary, updateDealSummary } from "./summary";
 import { deriveCommitmentState, deriveNextActionPolicy, fetchCommitmentArtifacts, evaluateDraftEvidence } from "./commitment";
 import { advanceCommitmentStage, computeCommitmentGap, fetchStageProperties } from "./commitmentStage";
+import { mirrorSdkTaskToHubSpot, readTaskSummaryFromDisk, validateTaskMirror, type SdkTaskStatus } from "./taskMirror";
 
 const MCP_PREFIX = "mcp__sales-crm__";
 
 // Tools the agent can use (fully autonomous - no human escalation tools)
 const ALLOWED_TOOLS = [
   "Skill",
-  "TodoWrite",
   "Task",
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskList",
+  "TaskGet",
   "StructuredOutput",
   "mcp__list_resources",
   "mcp__read_resource",
@@ -79,6 +83,8 @@ type AgentResult = {
   lastDraft?: { subject: string; body: string; emailId?: string | null } | null;
   error?: string;
 };
+
+type EmailDraft = { subject: string; body: string; emailId?: string | null };
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
@@ -286,8 +292,51 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   // Logging callbacks
   const toolCalls: Array<{ tool: string; input: any; timestamp: string }> = [];
   const toolResults: Array<{ tool: string; success: boolean; timestamp: string }> = [];
-  let lastDraft: { subject: string; body: string; emailId?: string | null } | null = null;
+  const lastDraftRef: { current: EmailDraft | null } = { current: null };
   let stopObserved = false;
+  let terminalAbort = false;
+  let contractSentSignal: { invoiceId: string; invoiceLink: string } | null = null;
+  const taskListId = process.env.CLAUDE_CODE_TASK_LIST_ID || dealId || "";
+  const taskCache = new Map<string, { subject: string | null; description: string | null; status: string | null }>();
+  const taskLifecycle: TaskLifecycleSummary[] = [];
+  const mirrorJobs: Array<Promise<void>> = [];
+
+  const updateTaskCache = (taskId: string, update: Partial<{ subject: string | null; description: string | null; status: string | null }>) => {
+    const current = taskCache.get(taskId) || { subject: null, description: null, status: null };
+    taskCache.set(taskId, { ...current, ...update });
+  };
+
+  const hydrateTaskFromDisk = (taskId: string) => {
+    if (!taskListId) return;
+    const summary = readTaskSummaryFromDisk(taskListId, taskId);
+    if (summary && (summary.subject || summary.description)) {
+      updateTaskCache(taskId, {
+        subject: summary.subject ?? null,
+        description: summary.description ?? null
+      });
+    }
+  };
+
+  const resolveTaskSummary = (taskId: string) => {
+    const cached = taskCache.get(taskId);
+    if (!cached || (!cached.subject && !cached.description)) {
+      hydrateTaskFromDisk(taskId);
+    }
+    const resolved = taskCache.get(taskId);
+    return {
+      subject: resolved?.subject ?? null,
+      description: resolved?.description ?? null
+    };
+  };
+
+  const normalizeSdkStatus = (value: any): SdkTaskStatus | null => {
+    if (value === "pending" || value === "in_progress" || value === "completed") return value;
+    return null;
+  };
+
+  const captureTaskLifecycle = (entry: TaskLifecycleSummary) => {
+    taskLifecycle.push(entry);
+  };
 
   // Create enforcement state to ensure email responses are sent
   const enforcementState = createEnforcementState(event.source);
@@ -297,11 +346,83 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     onToolCall: (tool, input) => {
       toolCalls.push({ tool, input, timestamp: new Date().toISOString() });
     },
-    onToolResult: (tool, result, success) => {
+    onToolResult: (tool, result, success, toolInput) => {
       toolResults.push({ tool, success, timestamp: new Date().toISOString() });
+      if (!success) return;
+
+      if (tool === "TaskCreate") {
+        const taskId = String(result?.task?.id ?? result?.data?.task?.id ?? result?.taskId ?? result?.id ?? "");
+        if (taskId) {
+          const subject = typeof result?.task?.subject === "string"
+            ? result.task.subject
+            : typeof toolInput?.subject === "string"
+              ? toolInput.subject
+              : null;
+          const description = typeof toolInput?.description === "string" ? toolInput.description : null;
+          updateTaskCache(taskId, { subject: subject ?? null, description, status: "pending" });
+        }
+        return;
+      }
+
+      if (tool === "TaskUpdate") {
+        const taskId = String(toolInput?.taskId ?? result?.taskId ?? "");
+        if (!taskId) return;
+
+        const inputSubject = typeof toolInput?.subject === "string" ? toolInput.subject : null;
+        const inputDescription = typeof toolInput?.description === "string" ? toolInput.description : null;
+        if (inputSubject || inputDescription) {
+          updateTaskCache(taskId, {
+            subject: inputSubject ?? taskCache.get(taskId)?.subject ?? null,
+            description: inputDescription ?? taskCache.get(taskId)?.description ?? null
+          });
+        }
+
+        const statusTo = normalizeSdkStatus(result?.statusChange?.to ?? toolInput?.status);
+        const statusFrom = result?.statusChange?.from ?? taskCache.get(taskId)?.status ?? null;
+        if (statusTo) {
+          updateTaskCache(taskId, { status: statusTo });
+        }
+
+        if (statusTo === "in_progress" || statusTo === "completed") {
+          const { subject, description } = resolveTaskSummary(taskId);
+          const summaryText = subject || `Task ${taskId}`;
+          const lifecycleEntry: TaskLifecycleSummary = {
+            taskId,
+            subject,
+            statusFrom: statusFrom ? String(statusFrom) : null,
+            statusTo,
+            timestamp: new Date().toISOString()
+          };
+
+          captureTaskLifecycle(lifecycleEntry);
+
+          const mirrorJob = mirrorSdkTaskToHubSpot({
+            dealId,
+            sdkTaskId: taskId,
+            sdkStatus: statusTo,
+            summary: summaryText,
+            description
+          })
+            .then((mirrorResult) => {
+              lifecycleEntry.hubspotTaskId = mirrorResult.hubspotTaskId ?? null;
+              lifecycleEntry.hubspotStatus = mirrorResult.hubspotStatus ?? null;
+              lifecycleEntry.hubspotAction = mirrorResult.action;
+              lifecycleEntry.error = mirrorResult.error ?? null;
+            })
+            .catch((error: any) => {
+              lifecycleEntry.hubspotAction = "skipped";
+              lifecycleEntry.error = error?.message || String(error);
+            });
+
+          mirrorJobs.push(mirrorJob);
+        }
+      }
     },
     onEmailDraft: (draft) => {
-      lastDraft = draft;
+      lastDraftRef.current = draft;
+    },
+    onContractSent: (payload) => {
+      contractSentSignal = payload;
     },
     onStop: (reason) => {
       stopObserved = true;
@@ -328,14 +449,19 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   let summaryRefreshed = false;
 
   try {
+    const queryEnv = getClaudeEnv();
+    if (taskListId && !queryEnv.CLAUDE_CODE_TASK_LIST_ID) {
+      queryEnv.CLAUDE_CODE_TASK_LIST_ID = taskListId;
+    }
+
     const queryOptions = {
       model: "opus",
       resume: sessionId || undefined,
       executable: "bun",
       pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
+      env: queryEnv,
       systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemPrompt },
-      settingSources: ["project", "user"] as any,
+      settingSources: ["user", "project"] as any,
       allowedTools: ALLOWED_TOOLS,
       mcpServers,
       agents: SALES_SUBAGENTS,
@@ -350,7 +476,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     let toolUsage: any = null;
 
     for await (const message of query({
-      prompt: buildStreamingPrompt(userPrompt),
+      prompt: buildStreamingPrompt(userPrompt, { sessionId }),
       options: queryOptions as any
     }) as any) {
       // Capture session ID
@@ -388,6 +514,47 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
           agentError = message.errors.join("; ");
         }
       }
+
+      if (contractSentSignal && !terminalAbort) {
+        try {
+          await updateDealProperties(dealId, { dealstage: "contractsent" });
+          console.log("[SalesAgent] Terminal stage reached: contractsent");
+        } catch (error: any) {
+          console.error("[SalesAgent] Failed to mark contractsent:", error.message || error);
+        }
+        terminalAbort = true;
+        successResult = true;
+        controller.abort();
+      }
+    }
+
+    if (mirrorJobs.length > 0) {
+      try {
+        const timeout = new Promise((resolve) => setTimeout(resolve, 5000, "timeout"));
+        const settled = await Promise.race([Promise.allSettled(mirrorJobs), timeout]);
+        if (settled === "timeout") {
+          console.warn("[SalesAgent] HubSpot task mirror timed out; continuing");
+        }
+      } catch (error: any) {
+        console.warn("[SalesAgent] HubSpot task mirror failed:", error?.message || error);
+      }
+    }
+
+    if (dealId && taskLifecycle.length > 0) {
+      try {
+        const latestStatuses = new Map<string, SdkTaskStatus>();
+        for (const event of taskLifecycle) {
+          const status = normalizeSdkStatus(event.statusTo);
+          if (status) latestStatuses.set(event.taskId, status);
+        }
+        const expected = Array.from(latestStatuses.entries()).map(([taskId, status]) => ({ taskId, status }));
+        const validation = await validateTaskMirror({ dealId, expected });
+        if (validation.missing.length > 0 || validation.mismatched.length > 0) {
+          console.warn("[SalesAgent] HubSpot task mirror validation issues:", JSON.stringify(validation));
+        }
+      } catch (error: any) {
+        console.warn("[SalesAgent] HubSpot task mirror validation failed:", error?.message || error);
+      }
     }
 
     // Log Run Note
@@ -401,6 +568,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         planSummary,
         judgeSummary,
         executionSummary,
+        taskLifecycle,
         toolUsage,
         systemPromptAppend: systemPrompt
       });
@@ -435,8 +603,9 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         const propertiesForStage = await fetchStageProperties(dealId);
         const artifactsForStage = await fetchCommitmentArtifacts(dealId);
         const invoiceLink = enforcementState.lastInvoiceLink || artifactsForStage.invoiceLink;
-        const draftEvidence = lastDraft
-          ? await evaluateDraftEvidence({ draft: { subject: lastDraft.subject, body: lastDraft.body }, invoiceLink })
+        const lastDraftSnapshot = lastDraftRef.current;
+        const draftEvidence = lastDraftSnapshot
+          ? await evaluateDraftEvidence({ draft: { subject: lastDraftSnapshot.subject, body: lastDraftSnapshot.body }, invoiceLink })
           : null;
 
         const derivedStateForAdvance = updatedSummary
@@ -459,7 +628,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
           artifacts: { ...artifactsForStage, invoiceLink },
           draftEvidence,
           requireDraftForAdvance,
-          lastDraft: lastDraft ? { subject: lastDraft.subject, body: lastDraft.body } : null
+          lastDraft: lastDraftSnapshot ? { subject: lastDraftSnapshot.subject, body: lastDraftSnapshot.body } : null
         });
 
         if (stageAdvance.blockedReason) {
@@ -472,7 +641,13 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       }
     }
   } catch (error: any) {
-    agentError = error.message || "Unknown error";
+    if (terminalAbort && String(error?.name || "").toLowerCase() === "aborted") {
+      agentError = null;
+    } else if (terminalAbort && String(error?.message || "").toLowerCase().includes("abort")) {
+      agentError = null;
+    } else {
+      agentError = error.message || "Unknown error";
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -487,7 +662,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     dealId,
     contactId,
     sessionId: resultSessionId,
-    lastDraft,
+    lastDraft: lastDraftRef.current,
     error: agentError || undefined
   };
 

@@ -15,36 +15,9 @@ export const INTENT_SCHEMA = {
         "unknown"
       ]
     },
-    goal: { type: "string" },
-    workitems: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          task: { type: "string" },
-          desc: { type: "string" },
-          justification: { type: "string", minLength: 1, maxLength: 240 },
-          skills: { type: "array", items: { type: "string" } },
-          type: { type: "string", enum: ["internal_action", "external_response"] },
-          order: { type: "number" },
-          dependsOn: { type: "array", items: { type: "number" } },
-          outputsTo: { anyOf: [{ type: "number" }, { type: "null" }] }
-        },
-        required: [
-          "task",
-          "desc",
-          "justification",
-          "skills",
-          "type",
-          "order",
-          "dependsOn",
-          "outputsTo"
-        ]
-      }
-    }
+    goal: { type: "string" }
   },
-  required: ["typeofengagement", "intent", "goal", "workitems"]
+  required: ["typeofengagement", "intent", "goal"]
 } as const;
 
 const JUDGE_ITEM = {

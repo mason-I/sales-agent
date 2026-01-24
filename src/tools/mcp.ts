@@ -15,7 +15,14 @@ try {
 }
 const ALLOWED_SKUS = new Set((PRODUCT_CATALOG.products || []).map((p) => p.sku));
 
-const DEAL_STAGE_IDS = [...STAGE_ORDER, "closedlost"] as const;
+function asNonEmptyTuple<T extends string>(values: T[], label: string): [T, ...T[]] {
+  if (values.length === 0) {
+    throw new Error(`${label} must include at least one value`);
+  }
+  return values as [T, ...T[]];
+}
+
+const DEAL_STAGE_IDS = asNonEmptyTuple([...STAGE_ORDER, "closedlost"], "DEAL_STAGE_IDS");
 
 const SUPPORT_CHANNEL_IDS = [
   "email",
@@ -468,7 +475,7 @@ export function createSalesMcpServer() {
         "Update allowed HubSpot deal properties with strict types and enums. Use for qualification and stage updates.",
         {
           dealId: z.string().min(1),
-          dealstage: z.enum(DEAL_STAGE_IDS as [string, ...string[]]).optional().describe("HubSpot deal stage ID"),
+          dealstage: z.enum(DEAL_STAGE_IDS).optional().describe("HubSpot deal stage ID"),
           dealname: z.string().optional().describe("Deal name"),
           sw_primary_pain: z.string().optional().describe("Primary pain point the customer is experiencing"),
           key_challenges: z.string().optional().describe("Specific obstacles or friction points increasing cost or time spent"),

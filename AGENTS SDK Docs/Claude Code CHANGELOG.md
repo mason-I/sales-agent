@@ -1,5 +1,75 @@
 # Changelog
 
+## 2.1.17
+
+- Fixed crashes on processors without AVX instruction support
+
+## 2.1.16
+
+- Added new task management system, including new capabilities like dependency tracking
+- [VSCode] Added native plugin management support
+- [VSCode] Added ability for OAuth users to browse and resume remote Claude sessions from the Sessions dialog
+- Fixed out-of-memory crashes when resuming sessions with heavy subagent usage
+- Fixed an issue where the "context remaining" warning was not hidden after running `/compact`
+- Fixed session titles on the resume screen not respecting the user's language setting
+- [IDE] Fixed a race condition on Windows where the Claude Code sidebar view container would not appear on start
+
+## 2.1.15
+
+- Added deprecation notification for npm installations - run `claude install` or see https://docs.anthropic.com/en/docs/claude-code/getting-started for more options
+- Improved UI rendering performance with React Compiler
+- Fixed the "Context left until auto-compact" warning not disappearing after running `/compact`
+- Fixed MCP stdio server timeout not killing child process, which could cause UI freezes
+
+## 2.1.14
+
+- Added history-based autocomplete in bash mode (`!`) - type a partial command and press Tab to complete from your bash command history
+- Added search to installed plugins list - type to filter by name or description
+- Added support for pinning plugins to specific git commit SHAs, allowing marketplace entries to install exact versions
+- Fixed a regression where the context window blocking limit was calculated too aggressively, blocking users at ~65% context usage instead of the intended ~98%
+- Fixed memory issues that could cause crashes when running parallel subagents
+- Fixed memory leak in long-running sessions where stream resources were not cleaned up after shell commands completed
+- Fixed `@` symbol incorrectly triggering file autocomplete suggestions in bash mode
+- Fixed `@`-mention menu folder click behavior to navigate into directories instead of selecting them
+- Fixed `/feedback` command generating invalid GitHub issue URLs when description is very long
+- Fixed `/context` command to show the same token count and percentage as the status line in verbose mode
+- Fixed an issue where `/config`, `/context`, `/model`, and `/todos` command overlays could close unexpectedly
+- Fixed slash command autocomplete selecting wrong command when typing similar commands (e.g., `/context` vs `/compact`)
+- Fixed inconsistent back navigation in plugin marketplace when only one marketplace is configured
+- Fixed iTerm2 progress bar not clearing properly on exit, preventing lingering indicators and bell sounds
+- Improved backspace to delete pasted text as a single token instead of one character at a time
+- [VSCode] Added `/usage` command to display current plan usage
+
+## 2.1.12
+
+- Fixed message rendering bug
+
+## 2.1.11
+
+- Fixed excessive MCP connection requests for HTTP/SSE transports
+
+## 2.1.10
+
+- Added new `Setup` hook event that can be triggered via `--init`, `--init-only`, or `--maintenance` CLI flags for repository setup and maintenance operations
+- Added keyboard shortcut 'c' to copy OAuth URL when browser doesn't open automatically during login
+- Fixed a crash when running bash commands containing heredocs with JavaScript template literals like `${index + 1}`
+- Improved startup to capture keystrokes typed before the REPL is fully ready
+- Improved file suggestions to show as removable attachments instead of inserting text when accepted
+- [VSCode] Added install count display to plugin listings
+- [VSCode] Added trust warning when installing plugins
+
+## 2.1.9
+
+- Added `auto:N` syntax for configuring the MCP tool search auto-enable threshold, where N is the context window percentage (0-100)
+- Added `plansDirectory` setting to customize where plan files are stored
+- Added external editor support (Ctrl+G) in AskUserQuestion "Other" input field
+- Added session URL attribution to commits and PRs created from web sessions
+- Added support for `PreToolUse` hooks to return `additionalContext` to the model
+- Added `${CLAUDE_SESSION_ID}` string substitution for skills to access the current session ID
+- Fixed long sessions with parallel tool calls failing with an API error about orphan tool_result blocks
+- Fixed MCP server reconnection hanging when cached connection promise never resolves
+- Fixed Ctrl+Z suspend not working in terminals using Kitty keyboard protocol (Ghostty, iTerm2, kitty, WezTerm)
+
 ## 2.1.7
 
 - Added `showTurnDuration` setting to hide turn duration messages (e.g., "Cooked for 1m 6s")

@@ -181,7 +181,7 @@ async function callCustomerLLM(
         env: getClaudeEnv(),
         systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt } as any,
         outputFormat: { type: "json_schema", schema: CUSTOMER_RESPONSE_SCHEMA },
-        settingSources: ["project", "user"] as any,
+        settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
         permissionMode: "bypassPermissions" as const
       }
@@ -281,7 +281,7 @@ async function generateNameAndCompany(seed: number): Promise<{ name: string; com
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: "Generate realistic business names and companies. Be diverse and creative." } as any,
       outputFormat: { type: "json_schema", schema: NAME_COMPANY_SCHEMA },
-      settingSources: ["project", "user"] as any,
+      settingSources: ["user", "project"] as any,
       allowedTools: ["StructuredOutput"],
       permissionMode: "bypassPermissions" as const
     }

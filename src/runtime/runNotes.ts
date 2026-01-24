@@ -27,6 +27,18 @@ type ExecutionSummary = {
   executedTasks: Array<{ taskId: string; task: string; outcome: string }>;
 };
 
+export type TaskLifecycleSummary = {
+  taskId: string;
+  subject: string | null;
+  statusFrom: string | null;
+  statusTo: string;
+  timestamp: string;
+  hubspotTaskId?: string | null;
+  hubspotStatus?: string | null;
+  hubspotAction?: "created" | "updated" | "skipped";
+  error?: string | null;
+};
+
 type ToolUsageSummary = {
   totalCalls: number;
   totalFailures: number;
@@ -65,6 +77,7 @@ export type RunNote = {
   planSummary: PlanSummary | null;
   judgeSummary: JudgeSummary | null;
   executionSummary: ExecutionSummary | null;
+  taskLifecycle: TaskLifecycleSummary[] | null;
   toolUsage: ToolUsageSummary | null;
   retrySummary: RetrySummaryEntry[] | null;
   insights: RunNoteInsights;
@@ -123,20 +136,35 @@ function buildDeterministicInsights(toolUsage?: ToolUsageSummary | null): Partia
 
 export function buildPlanSummary(plan: any): PlanSummary | null {
   if (!plan) return null;
-  const workitems = safeArray(plan.workitems) as any[];
-  const tasks = workitems
-    .filter((w: any) => w && typeof w.task === "string")
-    .map((w: any) => ({
-      order: Number.isFinite(w.order) ? w.order : 0,
-      task: String(w.task || ""),
-      type: String(w.type || "internal_action")
-    }))
-    .slice(0, 6);
+  const items = safeArray(plan.workitems ?? plan.tasks ?? plan.items ?? plan.steps ?? plan.actions) as any[];
+  const tasks = items
+    .map((w: any, index: number) => {
+      const task =
+        typeof w?.task === "string"
+          ? w.task
+          : typeof w?.subject === "string"
+            ? w.subject
+            : typeof w?.title === "string"
+              ? w.title
+              : typeof w?.name === "string"
+                ? w.name
+                : typeof w?.description === "string"
+                  ? w.description
+                  : "";
+      if (!task) return null;
+      return {
+        order: Number.isFinite(w?.order) ? w.order : Number.isFinite(w?.index) ? w.index : index,
+        task: String(task),
+        type: String(w?.type || w?.kind || "internal_action")
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6) as Array<{ order: number; task: string; type: string }>;
 
   return {
     intent: plan.intent || null,
     goal: plan.goal || null,
-    workitemCount: safeArray(plan.workitems).length,
+    workitemCount: items.length,
     tasks
   };
 }
@@ -235,7 +263,7 @@ ${JSON.stringify(
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: systemPromptAppend },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: RUN_NOTE_INSIGHTS_SCHEMA },
       permissionMode: "bypassPermissions"
@@ -263,6 +291,7 @@ export async function createRunNote({
   planSummary,
   judgeSummary,
   executionSummary,
+  taskLifecycle,
   toolUsage,
   retrySummary,
   systemPromptAppend
@@ -275,6 +304,7 @@ export async function createRunNote({
   planSummary: PlanSummary | null;
   judgeSummary: JudgeSummary | null;
   executionSummary: ExecutionSummary | null;
+  taskLifecycle: TaskLifecycleSummary[] | null;
   toolUsage: ToolUsageSummary | null;
   retrySummary?: RetrySummaryEntry[] | null;
   systemPromptAppend: string;
@@ -316,6 +346,7 @@ export async function createRunNote({
     planSummary,
     judgeSummary,
     executionSummary,
+    taskLifecycle: taskLifecycle && taskLifecycle.length > 0 ? taskLifecycle : null,
     toolUsage,
     retrySummary: retrySummary && retrySummary.length > 0 ? retrySummary : null,
     insights
@@ -362,6 +393,7 @@ export function appendSimpleRunNote({
     planSummary: null,
     judgeSummary: null,
     executionSummary: null,
+    taskLifecycle: null,
     toolUsage: toolUsage || null,
     retrySummary: retrySummary && retrySummary.length > 0 ? retrySummary : null,
     insights

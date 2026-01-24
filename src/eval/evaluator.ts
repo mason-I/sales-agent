@@ -233,7 +233,7 @@ async function evaluateConversation(
         pathToClaudeCodeExecutable: getClaudeCodePath(),
         env: getClaudeEnv(),
         systemPrompt: { type: "preset", preset: "claude_code", append: EVALUATOR_SYSTEM_PROMPT },
-        settingSources: ["project", "user"] as any,
+        settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
         outputFormat: { type: "json_schema", schema: CONVERSATION_EVAL_SCHEMA },
         permissionMode: "bypassPermissions" as const

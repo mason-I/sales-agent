@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.17
+
+- Updated to parity with Claude Code v2.1.17
+
+## 0.2.16
+
+- Updated to parity with Claude Code v2.1.16
+
+## 0.2.15
+
+- Added notification hook support
+- Added `close()` method to Query interface for forcefully terminating running queries
+- Updated to parity with Claude Code v2.1.15
+
+## 0.2.14
+
+- Updated to parity with Claude Code v2.1.14
+
+## 0.2.12
+
+- Updated to parity with Claude Code v2.1.12
+
+## 0.2.11
+
+- Updated to parity with Claude Code v2.1.11
+
+## 0.2.10
+
+- Added `skills` and `maxTurns` configuration options to custom agent definitions.
+
+## 0.2.9
+
+- Updated to parity with Claude Code v2.1.9
+
+## 0.2.8
+
+- Updated to parity with Claude Code v2.1.8
+
 ## 0.2.7
 
 - Updated to parity with Claude Code v2.1.7

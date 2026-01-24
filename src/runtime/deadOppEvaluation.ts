@@ -164,7 +164,7 @@ ${summaryText}`;
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: `${systemPromptAppend}\n\n${systemPrompt}` },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools,
       mcpServers: mcpServers || { "sales-crm": createSalesMcpServer() },
       outputFormat: { type: "json_schema", schema: DEAD_OPP_EVAL_SCHEMA },

@@ -138,7 +138,7 @@ Deterministic signals:
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: DRAFT_EVIDENCE_SCHEMA },
       permissionMode: "bypassPermissions"
@@ -224,7 +224,7 @@ ${summaryText || "No deal summary."}`;
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: DERIVED_STATE_SCHEMA },
       permissionMode: "bypassPermissions"
@@ -293,7 +293,7 @@ ${summaryText || "No deal summary."}`;
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: NEXT_ACTION_SCHEMA },
       permissionMode: "bypassPermissions"

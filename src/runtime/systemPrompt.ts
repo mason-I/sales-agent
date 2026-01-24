@@ -253,10 +253,11 @@ When processing an email from a contact with multiple associated deals:
 2. Calling **crm_logEmailDraft** to log it to HubSpot
 
 Additional execution rules:
-1. Use TodoWrite to track your progress on multi-step work
-2. Complete tasks sequentially, marking each as done
-3. If you cannot complete a task, try alternatives - do not stop
-4. Every customer email requires a reply (except spam/abuse)
+1. Use SDK Tasks (TaskCreate/TaskUpdate/TaskList/TaskGet) to track multi-step work
+2. Mark tasks as in_progress before starting work and completed when finished
+3. Complete tasks sequentially, marking each as done
+4. If you cannot complete a task, try alternatives - do not stop
+5. Every customer email requires a reply (except spam/abuse)
 
 ## SMB Voice
 

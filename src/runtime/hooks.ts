@@ -2,7 +2,8 @@ import type {
   HookCallback, 
   PreToolUseHookInput, 
   PostToolUseHookInput,
-  PostToolUseFailureHookInput
+  PostToolUseFailureHookInput,
+  UserPromptSubmitHookInput
 } from "@anthropic-ai/claude-agent-sdk";
 
 const MCP_PREFIX = "mcp__sales-crm__";
@@ -281,11 +282,12 @@ export function createPreToolHook(options: {
  * Adds helpful context based on tool results and tracks required actions.
  */
 export function createPostToolHook(options: {
-  onToolResult?: (toolName: string, result: any, success: boolean) => void;
+  onToolResult?: (toolName: string, result: any, success: boolean, toolInput: any, toolUseId: string) => void;
   enforcementState?: EnforcementState;
   getDraftInput?: () => DraftInput | null;
   setDraftInput?: (input: DraftInput | null) => void;
   onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
+  onContractSent?: (payload: { invoiceId: string; invoiceLink: string }) => void;
 }): HookCallback {
   return async (input, toolUseId, context) => {
     const post = input as PostToolUseHookInput;
@@ -312,7 +314,7 @@ export function createPostToolHook(options: {
     }
     
     const isSuccess = parsed?.ok !== false && parsed?.success !== false;
-    options.onToolResult?.(toolName, parsed, isSuccess);
+    options.onToolResult?.(toolName, parsed, isSuccess, post.tool_input, post.tool_use_id);
     
     // Track email logging for enforcement
     if (toolName === `${MCP_PREFIX}crm_logEmailDraft` && isSuccess) {
@@ -330,6 +332,11 @@ export function createPostToolHook(options: {
           emailId: emailId ? String(emailId) : null
         });
         options.setDraftInput?.(null);
+        const invoiceLink = options.enforcementState?.lastInvoiceLink || null;
+        const invoiceId = options.enforcementState?.lastInvoiceId || null;
+        if (invoiceLink && invoiceId && body.includes(String(invoiceLink))) {
+          options.onContractSent?.({ invoiceId: String(invoiceId), invoiceLink: String(invoiceLink) });
+        }
       }
     }
 
@@ -355,6 +362,15 @@ export function createPostToolHook(options: {
       const invoiceId = parsed?.data?.invoiceId;
       if (invoiceLink) options.enforcementState.lastInvoiceLink = String(invoiceLink);
       if (invoiceId) options.enforcementState.lastInvoiceId = String(invoiceId);
+
+      if (invoiceLink) {
+        return {
+          hookSpecificOutput: {
+            hookEventName: post.hook_event_name,
+            additionalContext: `Invoice created. Include this invoice URL in your reply: ${String(invoiceLink)}`
+          }
+        };
+      }
     }
     
     // Add helpful context for KB NOT_FOUND
@@ -464,9 +480,10 @@ export function createPostToolUseFailureHook(): HookCallback {
  */
 export function buildSalesAgentHooks(callbacks: {
   onToolCall?: (toolName: string, input: any) => void;
-  onToolResult?: (toolName: string, result: any, success: boolean) => void;
+  onToolResult?: (toolName: string, result: any, success: boolean, toolInput: any, toolUseId: string) => void;
   onStop?: (reason: string) => void;
   onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
+  onContractSent?: (payload: { invoiceId: string; invoiceLink: string }) => void;
   enforcementState?: EnforcementState;
   additionalContext?: string | null;
 } = {}) {
@@ -498,11 +515,12 @@ export function buildSalesAgentHooks(callbacks: {
         setDraftInput: (input) => {
           lastDraftInput = input;
         },
-        onEmailDraft: callbacks.onEmailDraft
+        onEmailDraft: callbacks.onEmailDraft,
+        onContractSent: callbacks.onContractSent
       })] }
     ],
     UserPromptSubmit: callbacks.additionalContext
-      ? [{ hooks: [async (input) => ({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: callbacks.additionalContext || "" } })] }]
+      ? [{ hooks: [async (input: UserPromptSubmitHookInput) => ({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: callbacks.additionalContext || "" } })] }]
       : [],
     PostToolUseFailure: [
       { hooks: [createPostToolUseFailureHook()] }

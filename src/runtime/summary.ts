@@ -232,7 +232,7 @@ latestComms requirements:
       pathToClaudeCodeExecutable: getClaudeCodePath(),
       env: getClaudeEnv(),
       systemPrompt: { type: "preset", preset: "claude_code", append: systemPromptAppend },
-      settingSources: ["project", "user"],
+      settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: DEAL_SUMMARY_SCHEMA },
       permissionMode: "bypassPermissions"
