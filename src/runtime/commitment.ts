@@ -58,7 +58,7 @@ export type DraftEvidence = {
 };
 
 const INVOICE_PROPERTIES = ["hs_invoice_status", "hs_invoice_url", "hs_invoice_link", "hs_createdate"];
-const STRUCTURED_QUERY_TIMEOUT_MS = 45000;
+const STRUCTURED_QUERY_TIMEOUT_MS = 120000;
 
 async function collectStructuredOutput<T>(
   runner: ReturnType<typeof query>,
@@ -335,7 +335,7 @@ ${formatCommitmentOrder()}
     return {
       mustAnswer: "Answer the prospect's latest questions directly and briefly.",
       nextCommitment: derivedState.commitmentCurrent,
-      minimalAsk: "If helpful, share any context that would make a future follow-up useful.",
+      minimalAsk: "None. Politely disengage.",
       askStyle: "nurture",
       avoidTopics: [],
       pricingDirective: { required: derivedState.pricingIntent !== "none", skus: [], notes: null }

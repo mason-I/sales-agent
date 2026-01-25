@@ -422,9 +422,17 @@ function extractKeyChallenge(text: string): string | null {
 
 function inferFatigueFromText(text: string): { present: boolean; rationale: string } | null {
   const lower = text.toLowerCase();
+  
+  // Explicitly handle short politeness-only responses which usually signal end of current turn/topic
+  const clean = lower.replace(/[^a-z\s]/g, "").trim();
+  if (["thanks", "thank you", "thanks for now", "ok thanks", "okay thanks", "thanks bye", "appreciate it", "will do", "sounds good"].includes(clean)) {
+    return { present: true, rationale: "Short politeness-only response detected." };
+  }
+
   const signals = [
-    /\bjust curious\b/,
-    /\bmostly curious\b/,
+    /\bjust (curious|looking|exploring)\b/,
+    /\b(exploring|checking) options\b/,
+    /\bmostly (curious|looking)\b/,
     /\bno pain points\b/,
     /\bhaven't identified\b/,
     /\bexploratory phase\b/,
@@ -435,16 +443,20 @@ function inferFatigueFromText(text: string): { present: boolean; rationale: stri
     /\bno rush\b/,
     /\bwe have what we need\b/,
     /\bi have what i need\b/,
-    /\bthat's all\b/,
+    /\bthat's (all|it)\b/,
     /\bno further questions\b/,
     /\bno more questions\b/,
-    /\bwe'?ll (get back|follow up|circle back|be in touch|let you know)\b/,
-    /\bi'?ll (get back|follow up|circle back|be in touch|let you know)\b/,
+    /\bwe'?ll (get back|follow up|circle back|be in touch|let you know|take a look|review)\b/,
+    /\bi'?ll (get back|follow up|circle back|be in touch|let you know|take a look|review)\b/,
     /\bdecision (next|early) week\b/,
     /\bearly next week\b/,
     /\bdiscuss (internally|with (my|our|the) team)\b/,
     /\bwe'?ll discuss\b/,
-    /\bwe'?ll review\b/
+    /\bwe'?ll review\b/,
+    /\bfiguring (it|that) out\b/,
+    /\bappreciate (you|it|that|the|your)\b/,
+    /\bthanks (again|so much|a lot)\b/,
+    /\bthank you (again|so much|a lot)\b/
   ];
   if (signals.some((s) => s.test(lower))) {
     return { present: true, rationale: "Heuristic low-intent/time-waster signals in customer reply." };
@@ -775,7 +787,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         dealStageName: dealContext.dealStageName,
         artifacts,
         event: { subject: eventContext.subject, body: eventContext.body }
-      }), 45000, "deriveCommitmentState");
+      }), 120000, "deriveCommitmentState");
     }
   } catch (error) {
     console.warn("[SalesAgent] Derived commitment state failed:", error);
@@ -812,7 +824,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       derivedState,
       dealSummary: dealContext.dealSummary,
       event: { subject: eventContext.subject, body: eventContext.body }
-    }), 45000, "deriveNextActionPolicy");
+    }), 120000, "deriveNextActionPolicy");
   } catch (error) {
     console.warn("[SalesAgent] Next action policy failed:", error);
     nextActionPolicy = {
@@ -873,6 +885,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     `Ask style: ${nextActionPolicy.askStyle}\n` +
     `Avoid topics: ${nextActionPolicy.avoidTopics.length ? nextActionPolicy.avoidTopics.join("; ") : "none"}\n` +
     `Pricing directive: ${nextActionPolicy.pricingDirective.required ? "required" : "not required"}${nextActionPolicy.pricingDirective.skus.length ? ` (SKUs: ${nextActionPolicy.pricingDirective.skus.join(", ")})` : ""}` +
+    `${nextActionPolicy.minimalAsk.includes("disengage") ? "\n\nCRITICAL: DO NOT ASK QUESTIONS. The prospect is fatigued/disengaging. Send a polite closing statement ONLY." : ""}` +
     `${pricingCatalogSummary}`;
 
   // Build prompts
