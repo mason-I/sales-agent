@@ -168,6 +168,7 @@ ${summaryText}`;
       allowedTools,
       mcpServers: mcpServers || { "sales-crm": createSalesMcpServer() },
       outputFormat: { type: "json_schema", schema: DEAD_OPP_EVAL_SCHEMA },
+      allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions"
     }
   })) {

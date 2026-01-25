@@ -41,10 +41,10 @@ EVALUATION CRITERIA:
    - 5: Partially relevant but missed key points
    - 0: Completely off-topic or ignored the customer
 
-2. **Progression Value (0-10)**: Did this move the deal forward?
-   - 10: Gathered critical qualification info or moved to next stage
-   - 5: Maintained engagement but no real progress
-   - 0: Damaged the relationship or lost ground
+2. **Progression Value (0-10)**: Did this move the commitment ladder forward?
+   - 10: Advanced or clearly unlocked the next commitment
+   - 5: Maintained engagement but didn’t unlock a new commitment
+   - 0: Regressed trust or stalled with redundant asks
 
 3. **Guardrail Compliance**: Did the agent follow these rules?
    - Async-only communication (no calls/meetings proposed)
@@ -55,9 +55,9 @@ EVALUATION CRITERIA:
    - Reference to prior context shows memory
    - Repeating questions already answered shows failure
 
-5. **Discovery Effectiveness (0-10)**: How well did the agent uncover customer information?
-   - Asked open-ended questions
-   - Built rapport before pushing for details
+5. **Discovery Effectiveness (0-10)**: How well did the agent uncover only what was needed?
+   - Asked minimal, targeted questions to advance the next commitment
+   - Avoided redundant questions
    - Captured and used revealed information
 
 6. **Response Quality (0-10)**: Overall quality of agent responses
@@ -70,15 +70,17 @@ EVALUATION CRITERIA:
    - Contact created with correct info
    - Deal stage progression appropriate
    - Properties populated with revealed info
+   - Pricing discussed only after catalog read and pricing sent
 
 VIOLATION CODES:
    - SYNC_CHANNEL: Proposed call/meeting instead of email
    - PREMATURE_PRICING: Discussed pricing without pricing intent or without catalog reference
-- IGNORED_CUSTOMER: Failed to address customer's question
-- REDUNDANT_QUESTION: Asked something already answered
-- PUSHY_BEHAVIOR: Pushed too hard, damaging rapport
-- WRONG_STAGE: Deal stage doesn't match conversation state
-- MISSING_DATA: Failed to capture revealed information
+   - IGNORED_CUSTOMER: Failed to address customer's question
+   - REDUNDANT_QUESTION: Asked something already answered
+   - PUSHY_BEHAVIOR: Pushed too hard, damaging rapport
+   - WRONG_STAGE: Deal stage doesn't match commitment state
+   - MISSING_DATA: Failed to capture revealed information
+   - FATIGUE_MISS: Kept interrogating despite fatigue signals
 
 Provide specific, actionable recommendations for improvement.`;
 
@@ -126,8 +128,11 @@ async function verifyCRMState(
       "dealstage",
       "deal_summary",
       "sw_primary_pain",
+      "key_challenges",
       "amount",
-      "timeline_for_change"
+      "timeline_for_change",
+      "agents_required",
+      "ticket_volume_per_month"
     ]);
 
     dealExists = true;
@@ -173,6 +178,18 @@ async function verifyCRMState(
   };
 }
 
+function formatTimelineForChange(value: any): string {
+  if (value === null || value === undefined || value === "") return "N/A";
+  const parsed = Number(value);
+  if (Number.isFinite(parsed)) {
+    const date = new Date(parsed);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().slice(0, 10);
+    }
+  }
+  return String(value);
+}
+
 // =============================================================================
 // Single Conversation Evaluation
 // =============================================================================
@@ -199,6 +216,11 @@ function buildEvaluationPrompt(
   prompt += `Deal Created: ${crmVerification.dealExists}\n`;
   prompt += `Deal Stage: ${crmVerification.dealStage || "N/A"}\n`;
   prompt += `Engagements Logged: ${crmVerification.engagementCount}\n`;
+  prompt += `Primary Pain: ${crmVerification.dealProperties?.sw_primary_pain || "N/A"}\n`;
+  prompt += `Key Challenges: ${crmVerification.dealProperties?.key_challenges || "N/A"}\n`;
+  prompt += `Agents Required: ${crmVerification.dealProperties?.agents_required || "N/A"}\n`;
+  prompt += `Ticket Volume/Month: ${crmVerification.dealProperties?.ticket_volume_per_month || "N/A"}\n`;
+  prompt += `Timeline for Change: ${formatTimelineForChange(crmVerification.dealProperties?.timeline_for_change)}\n`;
 
   if (crmVerification.crmIssues.length > 0) {
     prompt += `CRM Issues: ${crmVerification.crmIssues.join("; ")}\n`;
@@ -236,6 +258,7 @@ async function evaluateConversation(
         settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
         outputFormat: { type: "json_schema", schema: CONVERSATION_EVAL_SCHEMA },
+        allowDangerouslySkipPermissions: true,
         permissionMode: "bypassPermissions" as const
       }
     }) as AsyncIterable<any>) {

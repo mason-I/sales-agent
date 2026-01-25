@@ -92,8 +92,9 @@ export function formatSummaryForPrompt(summary: any) {
     }
   }
 
-  const latestComms = Array.isArray(data.latestComms)
-    ? data.latestComms
+  const latestCommsEntries = Array.isArray(data.latestComms) ? data.latestComms.slice(-6) : [];
+  const latestComms = latestCommsEntries.length
+    ? latestCommsEntries
       .map((entry: any) => {
         const ts = entry?.timestamp || "unknown";
         const dir = entry?.direction || "unknown";
@@ -103,6 +104,9 @@ export function formatSummaryForPrompt(summary: any) {
       })
       .join("\n")
     : "none";
+
+  const narrativeRaw = typeof data.narrative === "string" ? data.narrative : "";
+  const narrative = narrativeRaw.length > 1200 ? `${narrativeRaw.slice(0, 1197)}...` : narrativeRaw || "No additional context";
 
   return `DEAL STATE:
 - Stage: ${data.stage || "Unknown"}
@@ -128,7 +132,7 @@ RELATIONSHIP:
 - Latest Comms:
 ${latestComms}
 
-NARRATIVE: ${data.narrative || "No additional context"}`;
+NARRATIVE: ${narrative}`;
 }
 
 export async function updateDealSummary(dealId: string, summary: any) {
@@ -235,6 +239,7 @@ latestComms requirements:
       settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: DEAL_SUMMARY_SCHEMA },
+      allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions"
     }
   })) {

@@ -18,11 +18,14 @@ import type {
 } from "./types";
 import { STAGE_ORDER, STAGE_NAMES } from "../config/dealStage";
 import { deriveCommitmentState, fetchCommitmentArtifacts } from "../runtime/commitment";
+import { join } from "path";
 
 type ConversationConfig = {
   runId: string;
   conversationIndex: number;
   logProgress?: boolean;
+  verbose?: boolean;
+  maxTurns?: number;
 };
 
 /**
@@ -126,17 +129,31 @@ export async function runConversation(
   let currentDealId: string | null = null;
   let turnNumber = 0;
   let goalReached = false;
+  const maxTurns = config.maxTurns ?? 8;
 
   if (config.logProgress) {
     console.log(`[Conv ${conversationId}] Starting with persona: ${persona.id} (${persona.name})`);
   }
+  if (config.verbose) {
+    console.log(`[Conv ${conversationId}] Verbose logging enabled`);
+  }
+  const traceFilePath = config.verbose
+    ? join(process.cwd(), "data", "eval-runs", config.runId, "traces", `${conversationId}.log`)
+    : undefined;
+  const logPrefix = `[Conv ${conversationId}]`;
 
   try {
     // Turn 1: Customer sends initial inquiry
     turnNumber = 1;
     const turnStarted = new Date();
 
+    if (config.verbose) {
+      console.log(`[Conv ${conversationId}] Customer LLM start (turn ${turnNumber})`);
+    }
     const initialInquiry = await generateInitialInquiry(persona);
+    if (config.verbose) {
+      console.log(`[Conv ${conversationId}] Customer LLM complete (turn ${turnNumber})`);
+    }
 
     transcript.push({
       turnNumber,
@@ -151,14 +168,24 @@ export async function runConversation(
 
     // Agent processes Turn 1 (new_inbound)
     const agentTurnStart = new Date();
+    if (config.verbose) {
+      console.log(`[Conv ${conversationId}] Agent run start (turn ${turnNumber})`);
+    }
     const agentResult = await runSalesAgent({
       source: "new_inbound",
       type: "email",
       fromEmail: persona.email,
       fromName: persona.name,
       subject: "Quick question",
-      body: initialInquiry.message
+      body: initialInquiry.message,
+      verbose: config.verbose,
+      disableResume: true,
+      logPrefix,
+      traceFilePath
     });
+    if (config.verbose) {
+      console.log(`[Conv ${conversationId}] Agent run complete (turn ${turnNumber})`);
+    }
 
     const turnCompleted = new Date();
 
@@ -168,7 +195,7 @@ export async function runConversation(
     currentDealId = agentResult.dealId;
 
     // Capture the agent's response directly from hooks (no polling)
-    const agentResponseText = agentResult.lastDraft?.body || "";
+    const agentResponseText = agentResult.lastDraft?.body?.trim() || "";
     let lastAgentResponse = agentResponseText || "";
     if (agentResult.lastDraft?.emailId) {
       entities.engagementIds.push(agentResult.lastDraft.emailId);
@@ -177,7 +204,7 @@ export async function runConversation(
     transcript.push({
       turnNumber,
       role: "agent",
-      message: agentResponseText || "[Agent response logged to HubSpot]",
+      message: agentResponseText || "[No response logged]",
       timestamp: turnCompleted.toISOString()
     });
 
@@ -194,13 +221,15 @@ export async function runConversation(
       agentSessionId: agentResult.sessionId
     });
 
-    if (agentResult.error) {
+    if (agentResult.error || !agentResponseText) {
       lastError = agentResult.error;
-      outcome = "stalled";
-      endReason = `Agent error: ${agentResult.error}`;
+      outcome = agentResult.error ? "stalled" : "timeout";
+      endReason = agentResult.error
+        ? `Agent error: ${agentResult.error}`
+        : "Agent did not log an email draft";
     }
 
-    if (!agentResult.error && currentDealId) {
+    if (!agentResult.error && agentResponseText && currentDealId) {
       const goalStatus = await checkGoalReached(currentDealId);
       if (goalStatus.reached) {
         goalReached = true;
@@ -209,17 +238,39 @@ export async function runConversation(
       }
     }
 
-    if (!agentResult.error && !goalReached) {
+    if (!agentResult.error && agentResponseText && !goalReached) {
+      if (turnNumber >= maxTurns) {
+        outcome = "timeout";
+        endReason = `Max turns (${maxTurns}) reached`;
+        if (config.logProgress) {
+          console.warn(`[Conv ${conversationId}] Max turns reached (${maxTurns})`);
+        }
+      }
+
       // Continue conversation until goal reached
-      for (turnNumber = 2; ; turnNumber++) {
+      for (turnNumber = 2; outcome !== "timeout"; turnNumber++) {
+        if (turnNumber > maxTurns) {
+          outcome = "timeout";
+          endReason = `Max turns (${maxTurns}) reached`;
+          if (config.logProgress) {
+            console.warn(`[Conv ${conversationId}] Max turns reached (${maxTurns})`);
+          }
+          break;
+        }
         const loopTurnStart = new Date();
 
         // Customer responds to agent
+        if (config.verbose) {
+          console.log(`[Conv ${conversationId}] Customer LLM start (turn ${turnNumber})`);
+        }
         const customerResponse = await generateCustomerResponse(
           persona,
           transcript,
           lastAgentResponse || ""
         );
+        if (config.verbose) {
+          console.log(`[Conv ${conversationId}] Customer LLM complete (turn ${turnNumber})`);
+        }
 
         transcript.push({
           turnNumber,
@@ -240,6 +291,9 @@ export async function runConversation(
 
         // Agent processes reply
         const replyAgentStart = new Date();
+        if (config.verbose) {
+          console.log(`[Conv ${conversationId}] Agent run start (turn ${turnNumber})`);
+        }
         const replyResult = await runSalesAgent({
           source: "reply_to_existing",
           type: "email",
@@ -247,15 +301,22 @@ export async function runConversation(
           fromEmail: persona.email,
           fromName: persona.name,
           subject: "Re: Quick question",
-          body: customerResponse.message
+          body: customerResponse.message,
+          verbose: config.verbose,
+          disableResume: true,
+          logPrefix,
+          traceFilePath
         });
+        if (config.verbose) {
+          console.log(`[Conv ${conversationId}] Agent run complete (turn ${turnNumber})`);
+        }
 
         const replyTurnCompleted = new Date();
 
         // Track engagement IDs (would be captured from hooks in full implementation)
         // entities.engagementIds.push(...);
 
-        const replyAgentResponse = replyResult.lastDraft?.body || "";
+        const replyAgentResponse = replyResult.lastDraft?.body?.trim() || "";
         if (replyResult.lastDraft?.emailId) {
           entities.engagementIds.push(replyResult.lastDraft.emailId);
         }
@@ -281,10 +342,12 @@ export async function runConversation(
           agentSessionId: replyResult.sessionId
         });
 
-        if (replyResult.error) {
+        if (replyResult.error || !replyAgentResponse) {
           lastError = replyResult.error;
-          outcome = "stalled";
-          endReason = `Agent error: ${replyResult.error}`;
+          outcome = replyResult.error ? "stalled" : "timeout";
+          endReason = replyResult.error
+            ? `Agent error: ${replyResult.error}`
+            : "Agent did not log an email draft";
           break;
         }
 

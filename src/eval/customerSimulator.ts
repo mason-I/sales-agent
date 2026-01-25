@@ -183,6 +183,7 @@ async function callCustomerLLM(
         outputFormat: { type: "json_schema", schema: CUSTOMER_RESPONSE_SCHEMA },
         settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
+        allowDangerouslySkipPermissions: true,
         permissionMode: "bypassPermissions" as const
       }
     }) as AsyncIterable<any>) {
@@ -283,6 +284,7 @@ async function generateNameAndCompany(seed: number): Promise<{ name: string; com
       outputFormat: { type: "json_schema", schema: NAME_COMPANY_SCHEMA },
       settingSources: ["user", "project"] as any,
       allowedTools: ["StructuredOutput"],
+      allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions" as const
     }
   }) as AsyncIterable<any>) {

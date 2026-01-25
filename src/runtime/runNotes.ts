@@ -266,6 +266,7 @@ ${JSON.stringify(
       settingSources: ["user", "project"],
       allowedTools: ["StructuredOutput"],
       outputFormat: { type: "json_schema", schema: RUN_NOTE_INSIGHTS_SCHEMA },
+      allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions"
     }
   })) {
