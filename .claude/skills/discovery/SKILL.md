@@ -1,19 +1,19 @@
 ---
 name: discovery
-description: Use when conducting discovery to understand prospect pain points, challenges, and requirements.
+description: Use only when a missing commitment is blocking progress; ask the minimum needed to advance the next commitment.
 ---
 
-# Discovery Skill (Zendesk Emulation)
+# Discovery Skill (Commitment-First)
 
-**Core Principle:** Diagnose before prescribing. Never pitch until you fully understand the support model and constraints.
+**Core Principle:** Advance the next commitment with the smallest possible ask. Diagnose before prescribing.
 **SMB Focus (<500 employees):** Keep discovery lightweight and practical. Assume lean teams, limited admin time, and sensitivity to complexity. Emphasize time-to-value and operational fit.
 
 ## When to Use
 
-- Use when missing context is blocking meaningful progression
-- Early-stage inquiries where you need to understand support stack and volume
-- Follow-ups where answers are incomplete or inconsistent
-- Before drafting recommendations when plan/add-on fit is unclear
+- Use only when the derived policy indicates a missing commitment and no answer-first reply can advance without 1 targeted question.
+- Early-stage inquiries where one missing fact gates the next commitment.
+- Follow-ups where answers are incomplete or inconsistent and block progression.
+- Before drafting recommendations when a single missing sizing input blocks SKU selection.
 
 ---
 
@@ -25,7 +25,7 @@ description: Use when conducting discovery to understand prospect pain points, c
 
 ---
 
-## 1. SPIN Framework (Execute in Order)
+## 1. SPIN Framework (Use selectively)
 
 ### Situation → Problem → Implication → Need-Payoff
 
@@ -36,7 +36,7 @@ description: Use when conducting discovery to understand prospect pain points, c
 | **Implication** | Amplify cost of inaction | "What happens when SLAs are missed?" / "How does this impact CSAT or renewals?" |
 | **Need-Payoff** | Connect to solution value | "If you could reduce handle time by 20%, what would that unlock?" |
 
-**Rule:** Don't over-ask Situation questions. Get the facts, then move to problems.
+**Rule:** Don’t over-ask. If a single fact unblocks the next commitment, ask only that.
 
 ---
 
@@ -55,7 +55,7 @@ description: Use when conducting discovery to understand prospect pain points, c
 
 ---
 
-## 3. BANT Qualification
+## 3. BANT Qualification (Only if it advances the next commitment)
 
 Extract these fields from every discovery conversation:
 
@@ -155,6 +155,7 @@ Do **not** recommend yet. Capture signals for the plan-recommendation skill:
 5. **Summarize Understanding:** Confirm your understanding before recommending plans/add-ons.
 6. **Async-only:** Do not suggest calls or meetings. If prospect requests a call, politely decline and redirect to async.
 7. **Handle blockers autonomously:** For phone-only requests, politely decline and redirect to async. For legal/compliance questions, answer from KB only - if NOT_FOUND, admit uncertainty and continue. For pricing demands (discounts), decline firmly - we do not offer discounts.
+8. **Minimal ask enforced:** Prefer 0 questions; if you ask, make it 1 question that directly advances the next commitment.
 
 If objections or competitor mentions arise, use the **objection-handling** skill.
 
@@ -162,4 +163,4 @@ If objections or competitor mentions arise, use the **objection-handling** skill
 Provide:
 1) **Concise summary** of known facts
 2) **Missing gaps** (bulleted)
-3) **Questions (max 1)** — short, answerable, and prioritized (0 is valid)
+3) **Questions (max 1)** — only if needed to advance the next commitment (0 is valid)

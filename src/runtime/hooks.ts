@@ -3,6 +3,7 @@ import type {
   PreToolUseHookInput, 
   PostToolUseHookInput,
   PostToolUseFailureHookInput,
+  NotificationHookInput,
   UserPromptSubmitHookInput
 } from "@anthropic-ai/claude-agent-sdk";
 
@@ -26,6 +27,10 @@ export type EnforcementState = {
   eventSource: string;
   pricingIntent?: "explicit" | "implied" | "none";
   pricingCatalogRead?: boolean;
+  buyerIntent?: "product_question" | "pricing_question" | "objection" | "implementation" | "stop_contact" | "unknown";
+  askStyle?: "question" | "cta" | "nurture" | "close";
+  recentAsks?: string[];
+  fatigueSignals?: { present: boolean; rationale?: string };
   lastInvoiceLink?: string | null;
   lastInvoiceId?: string | null;
 };
@@ -49,6 +54,10 @@ export function createEnforcementState(eventSource: string): EnforcementState {
     eventSource,
     pricingIntent: "none",
     pricingCatalogRead: false,
+    buyerIntent: "unknown",
+    askStyle: "nurture",
+    recentAsks: [],
+    fatigueSignals: { present: false, rationale: "unknown" },
     lastInvoiceLink: null,
     lastInvoiceId: null
   };
@@ -98,9 +107,9 @@ function sanitizeDraftContent(input: any): { sanitized: any; changed: boolean; i
         }
         return true;
       });
-      
+
       // Allow 0-3 questions; do not enforce a minimum
-      parts.questions = cleanedQuestions;
+      parts.questions = cleanedQuestions.slice(0, 3);
     }
     
     // Check and sanitize closing
@@ -159,6 +168,44 @@ function normalizeDraftInput(input: any): DraftInput | null {
   };
 }
 
+function normalizeQuestion(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/so i can help you[^,]*,\s*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isRepeatQuestion(question: string, recentAsks: string[]): boolean {
+  if (!question || !recentAsks.length) return false;
+  const normalized = normalizeQuestion(question);
+  return recentAsks.some((ask) => {
+    const normalizedAsk = normalizeQuestion(ask);
+    return normalizedAsk && (normalized.includes(normalizedAsk) || normalizedAsk.includes(normalized));
+  });
+}
+
+function hasCta(bodyParts: { intro: string; questions: string[]; closing: string }): boolean {
+  const combined = `${bodyParts.intro} ${bodyParts.closing}`.toLowerCase();
+  const patterns = [
+    /\bplease\b/,
+    /\blet me know\b/,
+    /\breply\b/,
+    /\bshare\b/,
+    /\bconfirm\b/,
+    /\bsend\b/,
+    /\bclarify\b/
+  ];
+  return patterns.some((p) => p.test(combined));
+}
+
+function draftIncludesPricing(bodyParts: { intro: string; questions: string[]; closing: string }): boolean {
+  const combined = `${bodyParts.intro} ${bodyParts.questions.join(" ")} ${bodyParts.closing}`;
+  const pattern = /\$[\d,]+(?:\.\d{1,2})?|\bUSD\b|\bper\s+agent\b/i;
+  return pattern.test(combined);
+}
+
 function ensureValidKbObjective(input: any, fallback = "Verify Zendesk capability"): { updated: any; changed: boolean } {
   if (!input.objective || typeof input.objective !== "string" || input.objective.trim().length < 5) {
     return {
@@ -174,12 +221,19 @@ const CATALOG_RESOURCE_URIS = new Set([
   "zendesk://pricing/catalog"
 ]);
 
+// Local file paths that should count as catalog reads
+const CATALOG_FILE_PATHS = new Set([
+  "data/zendesk-products.json",
+  "/data/zendesk-products.json"
+]);
+
 /**
  * Pre-tool hook for logging and auto-correction.
  * Blocks quoting/invoicing tools when pricing intent exists but catalog is not read.
  */
 export function createPreToolHook(options: {
   onToolCall?: (toolName: string, input: any) => void;
+  onToolDecision?: (toolName: string, decision: "allow" | "deny", reason?: string) => void;
   onDraftInput?: (input: DraftInput) => void;
   enforcementState?: EnforcementState;
 }): HookCallback {
@@ -194,19 +248,91 @@ export function createPreToolHook(options: {
     
     // Auto-correct draft input (but don't block)
     if (toolName === `${MCP_PREFIX}crm_logEmailDraft`) {
+      const pricingIntent = options.enforcementState?.pricingIntent || "none";
+      const catalogRead = options.enforcementState?.pricingCatalogRead;
+      const askStyle = options.enforcementState?.askStyle || "nurture";
+      const buyerIntent = options.enforcementState?.buyerIntent || "unknown";
+      const recentAsks = options.enforcementState?.recentAsks || [];
+
       const { sanitized, changed, issues } = sanitizeDraftContent(toolInput);
-      const draftInput = normalizeDraftInput(changed ? sanitized : toolInput);
+      let baseInput = changed ? sanitized : toolInput;
+      let draftInput = normalizeDraftInput(baseInput);
       if (draftInput) {
+        const originalQuestions = Array.isArray(draftInput.bodyParts.questions) ? draftInput.bodyParts.questions : [];
+        const filteredQuestions = originalQuestions.filter((q) => !isRepeatQuestion(q, recentAsks));
+        const removedRepeats = filteredQuestions.length !== originalQuestions.length;
+        const questionCapApplied = filteredQuestions.length > 3;
+        const updatedQuestions = filteredQuestions.slice(0, 3);
+        const updatedBodyParts = { ...draftInput.bodyParts, questions: updatedQuestions };
+        if (removedRepeats || questionCapApplied) {
+          issues.push("Removed repeated questions or capped question count");
+          baseInput = { ...baseInput, bodyParts: updatedBodyParts };
+          draftInput = normalizeDraftInput(baseInput);
+        }
         options.onDraftInput?.(draftInput);
       }
       
-      if (changed) {
+      if (buyerIntent === "stop_contact" && draftInput?.bodyParts?.questions?.length) {
+        return {
+          systemMessage: "Close-out reply must not include questions when buyer asked to stop contact.",
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "deny",
+            permissionDecisionReason: "Stop-contact response must not include questions."
+          }
+        };
+      }
+
+      if (askStyle === "question") {
+        const questionCount = draftInput?.bodyParts?.questions?.length || 0;
+        if (questionCount === 0) {
+          return {
+            systemMessage: "Draft requires a minimal question to advance the next commitment.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Missing required minimal ask (question)."
+            }
+          };
+        }
+      }
+
+      const fatiguePresent = Boolean(options.enforcementState?.fatigueSignals?.present);
+      const enforceCta =
+        (askStyle === "cta") ||
+        (askStyle === "nurture" && !fatiguePresent && buyerIntent !== "stop_contact");
+
+      if (enforceCta && draftInput) {
+        if (!draftInput.bodyParts.questions.length && !hasCta(draftInput.bodyParts)) {
+          return {
+            systemMessage: "Draft requires a minimal CTA to advance the next commitment.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Missing required minimal CTA."
+            }
+          };
+        }
+      }
+
+      if (pricingIntent !== "none" && !catalogRead && draftInput && draftIncludesPricing(draftInput.bodyParts)) {
+        return {
+          systemMessage: "QUOTE BLOCKED: Pricing intent detected but catalog not read. Use the Read tool on data/zendesk-products.json (or mcp__read_resource zendesk://products/catalog) before quoting.",
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "deny",
+            permissionDecisionReason: "Pricing intent detected but catalog resource not read."
+          }
+        };
+      }
+
+      if (changed || issues.length > 0) {
         return {
           systemMessage: `Auto-correction applied to draft: ${issues.join("; ")}. Remember: this is an async-only agent - no meetings, calls, or demos.`,
           hookSpecificOutput: {
             hookEventName: pre.hook_event_name,
             permissionDecision: "allow",
-            updatedInput: sanitized
+            updatedInput: baseInput
           }
         };
       }
@@ -231,8 +357,9 @@ export function createPreToolHook(options: {
       const pricingIntent = options.enforcementState?.pricingIntent || "none";
       const catalogRead = options.enforcementState?.pricingCatalogRead;
       if (pricingIntent !== "none" && !catalogRead) {
+        options.onToolDecision?.(toolName, "deny", "Pricing intent detected but catalog resource not read.");
         return {
-          systemMessage: "QUOTE BLOCKED: Pricing intent detected but catalog resource not read. Read the pricing catalog before quoting.",
+          systemMessage: "QUOTE BLOCKED: Pricing intent detected but catalog not read. Read the local catalog at data/zendesk-products.json (Read tool) before quoting.",
           hookSpecificOutput: {
             hookEventName: pre.hook_event_name,
             permissionDecision: "deny",
@@ -241,6 +368,7 @@ export function createPreToolHook(options: {
         };
       }
       if (pricingIntent === "none") {
+        options.onToolDecision?.(toolName, "allow", "Pricing intent not detected.");
         return {
           systemMessage: "Pricing intent not detected. Only quote if the prospect explicitly or implicitly requested pricing.",
           hookSpecificOutput: {
@@ -354,6 +482,22 @@ export function createPostToolHook(options: {
         if (CATALOG_RESOURCE_URIS.has(resolvedUri)) {
           options.enforcementState.pricingCatalogRead = true;
         }
+      }
+    }
+
+    if (toolName === "Read" && isSuccess && options.enforcementState) {
+      const inputRecord = isRecord(post.tool_input) ? post.tool_input : {};
+      const filePath = typeof inputRecord.file_path === "string" ? inputRecord.file_path : "";
+      if (filePath.endsWith("/data/zendesk-products.json") || filePath.endsWith("/data/pricing.json")) {
+        options.enforcementState.pricingCatalogRead = true;
+      }
+    }
+
+    if (toolName === "Bash" && isSuccess && options.enforcementState) {
+      const inputRecord = isRecord(post.tool_input) ? post.tool_input : {};
+      const command = typeof inputRecord.command === "string" ? inputRecord.command : "";
+      if (command.includes("data/zendesk-products.json") || command.includes("data/pricing.json")) {
+        options.enforcementState.pricingCatalogRead = true;
       }
     }
 
@@ -481,7 +625,10 @@ export function createPostToolUseFailureHook(): HookCallback {
 export function buildSalesAgentHooks(callbacks: {
   onToolCall?: (toolName: string, input: any) => void;
   onToolResult?: (toolName: string, result: any, success: boolean, toolInput: any, toolUseId: string) => void;
+  onToolFailure?: (toolName: string, error: string, toolInput: any, toolUseId: string, isInterrupt?: boolean) => void;
+  onToolDecision?: (toolName: string, decision: "allow" | "deny", reason?: string) => void;
   onStop?: (reason: string) => void;
+  onNotification?: (message: string, title?: string) => void;
   onEmailDraft?: (draft: { subject: string; body: string; emailId?: string | null }) => void;
   onContractSent?: (payload: { invoiceId: string; invoiceLink: string }) => void;
   enforcementState?: EnforcementState;
@@ -501,6 +648,7 @@ export function buildSalesAgentHooks(callbacks: {
     PreToolUse: [
       { matcher: ".*", hooks: [createPreToolHook({
         onToolCall: callbacks.onToolCall,
+        onToolDecision: callbacks.onToolDecision,
         onDraftInput: (input) => {
           lastDraftInput = input;
         },
@@ -522,7 +670,29 @@ export function buildSalesAgentHooks(callbacks: {
     UserPromptSubmit: callbacks.additionalContext
       ? [{ hooks: [async (input: UserPromptSubmitHookInput) => ({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: callbacks.additionalContext || "" } })] }]
       : [],
+    Notification: callbacks.onNotification
+      ? [{
+        hooks: [async (input: NotificationHookInput) => {
+          callbacks.onNotification?.(input.message, input.title);
+          return {};
+        }]
+      }]
+      : [],
+    PreCompact: callbacks.additionalContext
+      ? [{ hooks: [async (input) => ({ hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: callbacks.additionalContext || "" } })] }]
+      : [],
     PostToolUseFailure: [
+      { hooks: [async (input, toolUseId) => {
+        const failInput = input as PostToolUseFailureHookInput;
+        callbacks.onToolFailure?.(
+          failInput.tool_name,
+          failInput.error,
+          failInput.tool_input,
+          toolUseId ?? "",
+          failInput.is_interrupt
+        );
+        return {};
+      }] },
       { hooks: [createPostToolUseFailureHook()] }
     ],
     Stop: [

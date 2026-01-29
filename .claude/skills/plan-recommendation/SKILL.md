@@ -1,13 +1,14 @@
 ---
 name: plan-recommendation
-description: Recommend a Zendesk-style plan + add-ons based on discovery inputs. Use when you need to map requirements to SKUs and quantities.
+description: Recommend a Zendesk plan + add-ons only after commitments are met or the buyer explicitly asks which plan/tier to buy.
 ---
 
-# Plan Recommendation Skill
+# Plan Recommendation Skill (Commitment-Gated)
 
-Use this skill to translate discovery inputs into a recommended plan + add-ons and SKU list.
+Use this skill to translate validated discovery inputs into a recommended plan + add-ons and SKU list.
+Use only when the next-action policy indicates plan selection or explicit/implied pricing intent.
 
-## Inputs to Collect
+## Inputs to Collect (Only if missing and blocking selection)
 - Agent count (full + light)
 - Channels required (capture full list)
 - Ticket volume and seasonality
@@ -84,3 +85,4 @@ Notes: Needs SSO + security review; enterprise add-ons may be required.
 - Keep estimates labeled as “starting at” when required.
 - Recommend the plan that best solves the pain points uncovered in discovery, not a default tier.
 - Use only SKUs that exist in `data/zendesk-products.json`. Do not add implementation/service SKUs.
+ - If commitment prerequisites are missing (pain, scope/impact, timeline, agent count, channels), do NOT recommend a plan; return the missing item(s) and a single minimal ask instead.
