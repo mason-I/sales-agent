@@ -39,6 +39,8 @@ function parseArgs(): {
   personaSet: string;
   runId?: string;
   dryRun: boolean;
+  verbose: boolean;
+  maxTurns: number;
 } {
   const args = process.argv.slice(2);
   let command: "run" | "score" | "cleanup" = "run";
@@ -47,6 +49,8 @@ function parseArgs(): {
   let personaSet = "default";
   let runId: string | undefined;
   let dryRun = false;
+  let verbose = false;
+  let maxTurns = Number.parseInt(process.env.EVAL_MAX_TURNS || "", 10) || 8;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -65,10 +69,14 @@ function parseArgs(): {
       runId = args[++i];
     } else if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg === "--verbose" || arg === "-v") {
+      verbose = true;
+    } else if (arg === "--max-turns" || arg === "-t") {
+      maxTurns = parseInt(args[++i], 10) || maxTurns;
     }
   }
 
-  return { command, count, concurrency, personaSet, runId, dryRun };
+  return { command, count, concurrency, personaSet, runId, dryRun, verbose, maxTurns };
 }
 
 // =============================================================================
@@ -176,7 +184,9 @@ function buildFailureResult(
 async function executeConversations(
   count: number,
   concurrency: number,
-  personaSet: string
+  personaSet: string,
+  verbose: boolean,
+  maxTurns: number
 ): Promise<string> {
   const runId = randomUUID().slice(0, 8);
   console.log(`\n=== Starting Eval Run: ${runId} ===\n`);
@@ -237,7 +247,9 @@ async function executeConversations(
         const result = await runConversation(persona, {
           runId,
           conversationIndex: index,
-          logProgress: true
+          logProgress: true,
+          verbose,
+          maxTurns
         });
 
         // Save result immediately
@@ -377,7 +389,7 @@ async function main() {
 
   switch (args.command) {
     case "run":
-      await executeConversations(args.count, args.concurrency, args.personaSet);
+      await executeConversations(args.count, args.concurrency, args.personaSet, args.verbose, args.maxTurns);
       break;
 
     case "score":

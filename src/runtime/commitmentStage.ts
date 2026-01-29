@@ -33,12 +33,16 @@ function checkStageRequirements({
   stageId,
   properties,
   artifacts,
-  draftEvidence
+  draftEvidence,
+  pricingIntent,
+  pricingCatalogRead
 }: {
   stageId: string;
   properties: Record<string, any>;
   artifacts: CommitmentArtifacts;
   draftEvidence?: DraftEvidence | null;
+  pricingIntent?: "explicit" | "implied" | "none";
+  pricingCatalogRead?: boolean;
 }): StageCheck {
   switch (stageId) {
     case DISCOVERY_STAGE_ID:
@@ -76,9 +80,13 @@ function checkStageRequirements({
       };
     case PRICING_DISCUSSED_STAGE_ID:
       return {
-        ok: Boolean(draftEvidence?.pricingIncluded),
-        missing: draftEvidence?.pricingIncluded ? [] : ["pricing_sent"],
-        reason: "Pricing must be sent in the email"
+        ok: Boolean(draftEvidence?.pricingIncluded) && pricingIntent !== "none" && Boolean(pricingCatalogRead),
+        missing: [
+          !draftEvidence?.pricingIncluded ? "pricing_sent" : null,
+          pricingIntent === "none" ? "pricing_intent" : null,
+          !pricingCatalogRead ? "catalog_read" : null
+        ].filter(Boolean) as string[],
+        reason: "Pricing requires intent + catalog read + pricing in reply"
       };
     case SELECTED_TIER_STAGE_ID:
       return {
@@ -140,6 +148,7 @@ export async function advanceCommitmentStage({
   properties,
   artifacts,
   draftEvidence,
+  pricingCatalogRead,
   requireDraftForAdvance,
   lastDraft
 }: {
@@ -149,6 +158,7 @@ export async function advanceCommitmentStage({
   properties: Record<string, any>;
   artifacts: CommitmentArtifacts;
   draftEvidence?: DraftEvidence | null;
+  pricingCatalogRead?: boolean;
   requireDraftForAdvance: boolean;
   lastDraft?: { subject: string; body: string } | null;
 }) {
@@ -199,7 +209,14 @@ export async function advanceCommitmentStage({
       break;
     }
 
-    const gate = checkStageRequirements({ stageId, properties, artifacts, draftEvidence });
+    const gate = checkStageRequirements({
+      stageId,
+      properties,
+      artifacts,
+      draftEvidence,
+      pricingIntent: derivedState.pricingIntent,
+      pricingCatalogRead
+    });
     if (gate.ok) {
       nextStageId = stageId;
       continue;

@@ -58,6 +58,47 @@ export type DraftEvidence = {
 };
 
 const INVOICE_PROPERTIES = ["hs_invoice_status", "hs_invoice_url", "hs_invoice_link", "hs_createdate"];
+const STRUCTURED_QUERY_TIMEOUT_MS = 120000;
+
+async function collectStructuredOutput<T>(
+  runner: ReturnType<typeof query>,
+  timeoutMs: number,
+  label: string
+): Promise<T | null> {
+  let structured: T | null = null;
+  const timeoutId = setTimeout(() => {
+    console.warn(`[Commitment] ${label} timed out after ${timeoutMs}ms, closing query.`);
+    runner.close();
+  }, timeoutMs);
+
+  try {
+    for await (const message of runner) {
+      if (message?.type === "result" && message.structured_output) {
+        structured = message.structured_output as T;
+      } else if (message?.type === "result" && message.is_error) {
+        const errors = Array.isArray(message.errors) ? message.errors.join("; ") : "unknown error";
+        console.warn(`[Commitment] Structured output error (${message.subtype}): ${errors}`);
+      } else if (message?.type === "result" && typeof message.result === "string") {
+        const trimmed = message.result.trim();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          try {
+            structured = JSON.parse(trimmed) as T;
+          } catch {
+            // ignore invalid JSON in result
+          }
+        }
+      }
+      const extracted = extractStructuredOutput(message);
+      if (extracted !== null && extracted !== undefined) {
+        structured = extracted as T;
+      }
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  return structured;
+}
 
 export async function fetchCommitmentArtifacts(dealId: string): Promise<CommitmentArtifacts> {
   const properties = await fetchDealProperties(dealId, ["hs_num_of_associated_line_items"]);
@@ -103,10 +144,12 @@ export async function fetchCommitmentArtifacts(dealId: string): Promise<Commitme
 
 export async function evaluateDraftEvidence({
   draft,
-  invoiceLink
+  invoiceLink,
+  timeoutMs
 }: {
   draft: { subject: string; body: string };
   invoiceLink?: string | null;
+  timeoutMs?: number;
 }): Promise<DraftEvidence> {
   const pricingPattern = /\$[\d,]+(?:\.\d{1,2})?|\bUSD\b|\bper\s+agent\b/i.test(draft.body);
   const invoiceLinkPresent = invoiceLink ? draft.body.includes(invoiceLink) : false;
@@ -116,7 +159,8 @@ export async function evaluateDraftEvidence({
 Rules:
 - pricingIncluded=true ONLY if the draft contains explicit numeric pricing (e.g., "$99", "USD 99", "per agent $49").
 - invoiceLinkIncluded=true ONLY if the exact invoice link appears in the draft.
-- Provide a short evidence snippet when true; otherwise null.`;
+- Provide a short evidence snippet when true; otherwise null.
+- Return JSON that matches the schema exactly. Do not include extra text.`;
 
   const userPrompt = `Draft Subject: ${draft.subject}
 Draft Body:
@@ -128,27 +172,26 @@ Deterministic signals:
 - pricingPatternFound: ${pricingPattern}
 - invoiceLinkPresent: ${invoiceLinkPresent}`;
 
-  let structured: DraftEvidence | null = null;
-
-  for await (const message of query({
-    prompt: userPrompt,
-    options: {
-      model: "opus",
-      executable: "bun",
-      pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
-      systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["user", "project"],
-      allowedTools: ["StructuredOutput"],
-      outputFormat: { type: "json_schema", schema: DRAFT_EVIDENCE_SCHEMA },
-      permissionMode: "bypassPermissions"
-    }
-  })) {
-    const extracted = extractStructuredOutput(message);
-    if (extracted !== null && extracted !== undefined) {
-      structured = extracted as DraftEvidence;
-    }
-  }
+  const structured = await collectStructuredOutput<DraftEvidence>(
+    query({
+      prompt: userPrompt,
+      options: {
+        model: "opus",
+        maxThinkingTokens: 256,
+        executable: "bun",
+        pathToClaudeCodeExecutable: getClaudeCodePath(),
+        env: getClaudeEnv(),
+        systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
+        settingSources: ["user", "project"],
+        allowedTools: ["StructuredOutput"],
+        outputFormat: { type: "json_schema", schema: DRAFT_EVIDENCE_SCHEMA },
+        allowDangerouslySkipPermissions: true,
+        permissionMode: "bypassPermissions"
+      }
+    }),
+    timeoutMs ?? STRUCTURED_QUERY_TIMEOUT_MS,
+    "evaluateDraftEvidence"
+  );
 
   if (!structured) {
     return {
@@ -173,7 +216,8 @@ export async function deriveCommitmentState({
   dealStageId,
   dealStageName,
   artifacts,
-  event
+  event,
+  timeoutMs
 }: {
   dealId: string;
   dealSummary: any;
@@ -181,8 +225,10 @@ export async function deriveCommitmentState({
   dealStageName?: string | null;
   artifacts?: { lineItems: number; invoiceStatus?: string | null; invoiceLink?: string | null };
   event?: { subject?: string | null; body?: string | null };
+  timeoutMs?: number;
 }) {
   const summaryText = formatSummaryForPrompt(normalizeSummary(dealSummary) || null);
+  const summaryExcerpt = summaryText.length > 800 ? `${summaryText.slice(0, 797)}...` : summaryText;
   const systemPrompt = `You are a commitment-state classifier for a sales agent.
 
 Rules:
@@ -191,6 +237,7 @@ Rules:
 - Only output closedlost if the prospect is clearly not interested or requests no further contact.
 - Use explicit or implied pricing intent when appropriate.
 - Extract recent asks from the summary's latest comms; avoid hallucinating if unknown.
+- Return JSON that matches the schema exactly. Do not include extra text.
 
 Commitment order (monotonic):
 ${formatCommitmentOrder()}
@@ -211,30 +258,29 @@ ${event?.body || "(none)"}
 Artifacts:
 ${JSON.stringify(artifacts || {}, null, 2)}
 
-Deal Summary:
-${summaryText || "No deal summary."}`;
+Deal Summary (abridged):
+${summaryExcerpt || "No deal summary."}`;
 
-  let structured: DerivedCommitmentState | null = null;
-
-  for await (const message of query({
-    prompt: userPrompt,
-    options: {
-      model: "opus",
-      executable: "bun",
-      pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
-      systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["user", "project"],
-      allowedTools: ["StructuredOutput"],
-      outputFormat: { type: "json_schema", schema: DERIVED_STATE_SCHEMA },
-      permissionMode: "bypassPermissions"
-    }
-  })) {
-    const extracted = extractStructuredOutput(message);
-    if (extracted !== null && extracted !== undefined) {
-      structured = extracted as DerivedCommitmentState;
-    }
-  }
+  const structured = await collectStructuredOutput<DerivedCommitmentState>(
+    query({
+      prompt: userPrompt,
+      options: {
+        model: "opus",
+        maxThinkingTokens: 256,
+        executable: "bun",
+        pathToClaudeCodeExecutable: getClaudeCodePath(),
+        env: getClaudeEnv(),
+        systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
+        settingSources: ["user", "project"],
+        allowedTools: ["StructuredOutput"],
+        outputFormat: { type: "json_schema", schema: DERIVED_STATE_SCHEMA },
+        allowDangerouslySkipPermissions: true,
+        permissionMode: "bypassPermissions"
+      }
+    }),
+    timeoutMs ?? STRUCTURED_QUERY_TIMEOUT_MS,
+    "deriveCommitmentState"
+  );
 
   if (!structured) {
     throw new Error("Derived commitment state returned no structured output.");
@@ -247,14 +293,17 @@ export async function deriveNextActionPolicy({
   dealId,
   derivedState,
   dealSummary,
-  event
+  event,
+  timeoutMs
 }: {
   dealId: string;
   derivedState: DerivedCommitmentState;
   dealSummary: any;
   event?: { subject?: string | null; body?: string | null };
+  timeoutMs?: number;
 }) {
   const summaryText = formatSummaryForPrompt(normalizeSummary(dealSummary) || null);
+  const summaryExcerpt = summaryText.length > 600 ? `${summaryText.slice(0, 597)}...` : summaryText;
 
   const systemPrompt = `You are a next-action policy planner for a sales agent.
 
@@ -265,10 +314,33 @@ Rules:
 - Use nurture mode if fatigueSignals present or buyer ignored previous asks.
 - If buyer intent is stop_contact, set askStyle=close and minimalAsk should be a brief close (no question).
 - If pricingIntent is explicit or implied, set pricingDirective.required=true and include any SKUs to quote if known.
+- Return JSON that matches the schema exactly. Do not include extra text.
 
 Commitment order (monotonic):
 ${formatCommitmentOrder()}
 `;
+
+  if (derivedState.buyerIntent === "stop_contact") {
+    return {
+      mustAnswer: "Acknowledge the request and confirm no further contact.",
+      nextCommitment: derivedState.commitmentCurrent,
+      minimalAsk: "We’ll close this out. If anything changes, you can reach out anytime.",
+      askStyle: "close",
+      avoidTopics: [],
+      pricingDirective: { required: false, skus: [], notes: null }
+    };
+  }
+
+  if (derivedState.fatigueSignals.present) {
+    return {
+      mustAnswer: "Answer the prospect's latest questions directly and briefly.",
+      nextCommitment: derivedState.commitmentCurrent,
+      minimalAsk: "None. Politely disengage.",
+      askStyle: "nurture",
+      avoidTopics: [],
+      pricingDirective: { required: derivedState.pricingIntent !== "none", skus: [], notes: null }
+    };
+  }
 
   const userPrompt = `Deal ID: ${dealId}
 
@@ -280,33 +352,42 @@ Subject: ${event?.subject || "(none)"}
 Body:
 ${event?.body || "(none)"}
 
-Deal Summary:
-${summaryText || "No deal summary."}`;
+Deal Summary (abridged):
+${summaryExcerpt || "No deal summary."}`;
 
-  let structured: NextActionPolicy | null = null;
-
-  for await (const message of query({
-    prompt: userPrompt,
-    options: {
-      model: "opus",
-      executable: "bun",
-      pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
-      systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
-      settingSources: ["user", "project"],
-      allowedTools: ["StructuredOutput"],
-      outputFormat: { type: "json_schema", schema: NEXT_ACTION_SCHEMA },
-      permissionMode: "bypassPermissions"
-    }
-  })) {
-    const extracted = extractStructuredOutput(message);
-    if (extracted !== null && extracted !== undefined) {
-      structured = extracted as NextActionPolicy;
-    }
-  }
+  const structured = await collectStructuredOutput<NextActionPolicy>(
+    query({
+      prompt: userPrompt,
+      options: {
+        model: "opus",
+        maxThinkingTokens: 256,
+        executable: "bun",
+        pathToClaudeCodeExecutable: getClaudeCodePath(),
+        env: getClaudeEnv(),
+        systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt },
+        settingSources: ["user", "project"],
+        allowedTools: ["StructuredOutput"],
+        outputFormat: { type: "json_schema", schema: NEXT_ACTION_SCHEMA },
+        allowDangerouslySkipPermissions: true,
+        permissionMode: "bypassPermissions"
+      }
+    }),
+    timeoutMs ?? STRUCTURED_QUERY_TIMEOUT_MS,
+    "deriveNextActionPolicy"
+  );
 
   if (!structured) {
-    throw new Error("Next action policy returned no structured output.");
+    console.warn("[Commitment] Next action policy returned no structured output. Falling back to default policy.");
+    return {
+      mustAnswer: "Address the prospect's latest question or intent directly.",
+      nextCommitment: derivedState.commitmentCurrent,
+      minimalAsk: derivedState.fatigueSignals.present
+        ? "If helpful, share any context that would make follow-up easier."
+        : "If helpful, share one detail that would unblock next steps.",
+      askStyle: derivedState.fatigueSignals.present ? "nurture" : "question",
+      avoidTopics: [],
+      pricingDirective: { required: derivedState.pricingIntent !== "none", skus: [], notes: null }
+    };
   }
 
   return structured;

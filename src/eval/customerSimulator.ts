@@ -76,6 +76,7 @@ Only set shouldEnd=true if ONE of these applies:
 1. The agent sent a concrete next step (proposal, contract, invoice) AND you've decided to accept or decline it
 2. You're explicitly not interested and ending the conversation
 3. You're frustrated and done engaging
+4. The agent has clearly ended the conversation (e.g., "Feel free to reach out later", "I'll leave you to it", "Best of luck").
 
 **YOU MUST SET shouldEnd=false IF:**
 - The agent asked you questions (answer them and keep going!)
@@ -183,6 +184,7 @@ async function callCustomerLLM(
         outputFormat: { type: "json_schema", schema: CUSTOMER_RESPONSE_SCHEMA },
         settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
+        allowDangerouslySkipPermissions: true,
         permissionMode: "bypassPermissions" as const
       }
     }) as AsyncIterable<any>) {
@@ -283,6 +285,7 @@ async function generateNameAndCompany(seed: number): Promise<{ name: string; com
       outputFormat: { type: "json_schema", schema: NAME_COMPANY_SCHEMA },
       settingSources: ["user", "project"] as any,
       allowedTools: ["StructuredOutput"],
+      allowDangerouslySkipPermissions: true,
       permissionMode: "bypassPermissions" as const
     }
   }) as AsyncIterable<any>) {
