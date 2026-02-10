@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:25:26.139Z","runId":"1769729126139-475475","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"kofi.okafor-3ae6ba78-0@eval-915145.com","fromName":"Kofi Okafor","verbose":true}}
+{"timestamp":"2026-01-29T23:25:26.139Z","runId":"1769729126139-475475","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:25:28.523Z","runId":"1769729126139-475475","event_type":"pre_llm_complete","payload":{"contactId":"285680698857","dealId":"235060817379"}}
+{"timestamp":"2026-01-29T23:25:29.814Z","runId":"1769729126139-475475","event_type":"deal_context_fetched","dealId":"235060817379","payload":{"dealStage":"2130118129"}}

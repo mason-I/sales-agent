@@ -172,53 +172,84 @@ async function callCustomerLLM(
   for (let attempt = 0; attempt < prompts.length; attempt++) {
     const debugMessages: string[] = [];
     let attemptError: string | null = null;
+    let structuredFound = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    for await (const message of query({
+    const runner = query({
       prompt: buildStreamingPrompt(prompts[attempt]),
       options: {
         model: "opus",
         executable: "bun",
         pathToClaudeCodeExecutable: claudePath,
-        env: getClaudeEnv(),
+        env: { ...getClaudeEnv(), CLAUDE_CODE_ENABLE_TASKS: "true" },
         systemPrompt: { type: "preset", preset: "claude_code", append: systemPrompt } as any,
         outputFormat: { type: "json_schema", schema: CUSTOMER_RESPONSE_SCHEMA },
         settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],
         allowDangerouslySkipPermissions: true,
-        permissionMode: "bypassPermissions" as const
-      }
-    }) as AsyncIterable<any>) {
-      debugMessages.push(`${message.type}${message.subtype ? `:${message.subtype}` : ""}`);
-
-      if (message.type === "result") {
-        if (message.subtype && message.subtype.startsWith("error")) {
-          attemptError = JSON.stringify({
-            subtype: message.subtype,
-            errors: message.errors,
-            result: message.result,
-            code: message.code,
-            message: message.message
-          });
-        }
-        if (message.structured_output) {
-          structured = message.structured_output as CustomerResponse;
-        }
-        if (!structured && message.result && typeof message.result === "string") {
-          try {
-            const parsed = JSON.parse(message.result);
-            if (typeof parsed.message === "string") {
-              structured = parsed as CustomerResponse;
-            }
-          } catch {
-            // Not valid JSON
+        permissionMode: "bypassPermissions" as const,
+        stderr: (data: string) => {
+          const lines = String(data).split(/\r?\n/).filter(Boolean);
+          for (const line of lines) {
+            debugMessages.push(`stderr:${line}`);
           }
         }
       }
+    }) as AsyncIterable<any>;
 
-      const extracted = extractStructuredOutput(message);
-      if (extracted && typeof extracted.message === "string") {
-        structured = extracted as CustomerResponse;
+    timeoutId = setTimeout(() => {
+      attemptError = "Customer LLM timed out";
+      if ((runner as any)?.close) {
+        (runner as any).close();
       }
+    }, 30000);
+
+    try {
+      for await (const message of runner) {
+        debugMessages.push(`${message.type}${message.subtype ? `:${message.subtype}` : ""}`);
+
+        if (message.type === "result") {
+          if (message.subtype && message.subtype.startsWith("error")) {
+            attemptError = JSON.stringify({
+              subtype: message.subtype,
+              errors: message.errors,
+              result: message.result,
+              code: message.code,
+              message: message.message
+            });
+          }
+          if (message.structured_output) {
+            structured = message.structured_output as CustomerResponse;
+            structuredFound = true;
+          }
+          if (!structured && message.result && typeof message.result === "string") {
+            try {
+              const parsed = JSON.parse(message.result);
+              if (typeof parsed.message === "string") {
+                structured = parsed as CustomerResponse;
+                structuredFound = true;
+              }
+            } catch {
+              // Not valid JSON
+            }
+          }
+        }
+
+        const extracted = extractStructuredOutput(message);
+        if (extracted && typeof extracted.message === "string") {
+          structured = extracted as CustomerResponse;
+          structuredFound = true;
+        }
+
+        if (structuredFound && (runner as any)?.close) {
+          (runner as any).close();
+          break;
+        }
+      }
+    } catch (error: any) {
+      attemptError = error?.message || String(error);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
     attemptFlows.push(`attempt ${attempt + 1}: ${debugMessages.join(" -> ")}`);
@@ -280,7 +311,7 @@ async function generateNameAndCompany(seed: number): Promise<{ name: string; com
       model: "opus",
       executable: "bun",
       pathToClaudeCodeExecutable: claudePath,
-      env: getClaudeEnv(),
+      env: { ...getClaudeEnv(), CLAUDE_CODE_ENABLE_TASKS: "true" },
       systemPrompt: { type: "preset", preset: "claude_code", append: "Generate realistic business names and companies. Be diverse and creative." } as any,
       outputFormat: { type: "json_schema", schema: NAME_COMPANY_SCHEMA },
       settingSources: ["user", "project"] as any,

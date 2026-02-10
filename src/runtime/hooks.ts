@@ -4,8 +4,10 @@ import type {
   PostToolUseHookInput,
   PostToolUseFailureHookInput,
   NotificationHookInput,
+  PreCompactHookInput,
   UserPromptSubmitHookInput
 } from "@anthropic-ai/claude-agent-sdk";
+import { evaluateDraftQuality } from "./draftQuality";
 
 const MCP_PREFIX = "mcp__sales-crm__";
 const QUOTE_TOOLS = new Set([
@@ -33,6 +35,8 @@ export type EnforcementState = {
   fatigueSignals?: { present: boolean; rationale?: string };
   lastInvoiceLink?: string | null;
   lastInvoiceId?: string | null;
+  progressionGap?: { missingFields: string[]; instruction?: string } | null;
+  invalidInboundZeros?: string[];
 };
 
 type DraftInput = {
@@ -59,77 +63,16 @@ export function createEnforcementState(eventSource: string): EnforcementState {
     recentAsks: [],
     fatigueSignals: { present: false, rationale: "unknown" },
     lastInvoiceLink: null,
-    lastInvoiceId: null
+    lastInvoiceId: null,
+    progressionGap: null,
+    invalidInboundZeros: []
   };
 }
 
 const MAX_STOP_RETRIES = 2;
 
-/**
- * Auto-correction patterns for common tool input issues.
- * These hooks GUIDE rather than BLOCK - they fix issues and let the agent continue.
- */
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function detectAsyncOnlyViolation(text: string): boolean {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  const patterns = [
-    /\b(book|schedule|set up|arrange)\b.*\b(call|meeting|demo)\b/,
-    /\b(calendar|calendly|invite|meeting link|timeslot|time slots)\b/,
-    /\bzoom\b/,
-    /\bgoogle meet\b/
-  ];
-  return patterns.some(p => p.test(lower));
-}
-
-function sanitizeDraftContent(input: any): { sanitized: any; changed: boolean; issues: string[] } {
-  const issues: string[] = [];
-  const sanitized = { ...input };
-  
-  if (input.bodyParts) {
-    const parts = { ...input.bodyParts };
-    
-    // Check and sanitize intro
-    if (parts.intro && detectAsyncOnlyViolation(parts.intro)) {
-      issues.push("Intro contained meeting/call language");
-    }
-    
-    // Check and sanitize questions
-    if (Array.isArray(parts.questions)) {
-      const cleanedQuestions = parts.questions.filter((q: string) => {
-        if (detectAsyncOnlyViolation(q)) {
-          issues.push("Question contained meeting/call language");
-          return false;
-        }
-        return true;
-      });
-
-      // Allow 0-3 questions; do not enforce a minimum
-      parts.questions = cleanedQuestions.slice(0, 3);
-    }
-    
-    // Check and sanitize closing
-    if (parts.closing && detectAsyncOnlyViolation(parts.closing)) {
-      issues.push("Closing contained meeting/call language");
-    }
-    
-    sanitized.bodyParts = parts;
-  }
-  
-  // Check subject
-  if (input.subject && detectAsyncOnlyViolation(input.subject)) {
-    issues.push("Subject contained meeting/call language");
-  }
-  
-  return {
-    sanitized,
-    changed: issues.length > 0,
-    issues
-  };
 }
 
 function buildDraftBody(bodyParts: { intro: string; questions: string[]; closing: string }): string {
@@ -143,7 +86,7 @@ function buildDraftBody(bodyParts: { intro: string; questions: string[]; closing
   const questionLines = normalizedQuestions.map((q, i) => `${i + 1}) ${q}`).join("\n");
 
   let body = [intro, questionLines, closing].filter(Boolean).join("\n\n");
-  if (!/zendesk/i.test(body)) {
+  if (!body.toLowerCase().includes("zendesk")) {
     body = `${body}\n\nZendesk`;
   }
 
@@ -168,43 +111,6 @@ function normalizeDraftInput(input: any): DraftInput | null {
   };
 }
 
-function normalizeQuestion(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/so i can help you[^,]*,\s*/i, "")
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isRepeatQuestion(question: string, recentAsks: string[]): boolean {
-  if (!question || !recentAsks.length) return false;
-  const normalized = normalizeQuestion(question);
-  return recentAsks.some((ask) => {
-    const normalizedAsk = normalizeQuestion(ask);
-    return normalizedAsk && (normalized.includes(normalizedAsk) || normalizedAsk.includes(normalized));
-  });
-}
-
-function hasCta(bodyParts: { intro: string; questions: string[]; closing: string }): boolean {
-  const combined = `${bodyParts.intro} ${bodyParts.closing}`.toLowerCase();
-  const patterns = [
-    /\bplease\b/,
-    /\blet me know\b/,
-    /\breply\b/,
-    /\bshare\b/,
-    /\bconfirm\b/,
-    /\bsend\b/,
-    /\bclarify\b/
-  ];
-  return patterns.some((p) => p.test(combined));
-}
-
-function draftIncludesPricing(bodyParts: { intro: string; questions: string[]; closing: string }): boolean {
-  const combined = `${bodyParts.intro} ${bodyParts.questions.join(" ")} ${bodyParts.closing}`;
-  const pattern = /\$[\d,]+(?:\.\d{1,2})?|\bUSD\b|\bper\s+agent\b/i;
-  return pattern.test(combined);
-}
 
 function ensureValidKbObjective(input: any, fallback = "Verify Zendesk capability"): { updated: any; changed: boolean } {
   if (!input.objective || typeof input.objective !== "string" || input.objective.trim().length < 5) {
@@ -246,29 +152,15 @@ export function createPreToolHook(options: {
     // Log tool call for observability
     options.onToolCall?.(toolName, rawToolInput);
     
-    // Auto-correct draft input (but don't block)
+    // Validate draft input
     if (toolName === `${MCP_PREFIX}crm_logEmailDraft`) {
       const pricingIntent = options.enforcementState?.pricingIntent || "none";
       const catalogRead = options.enforcementState?.pricingCatalogRead;
       const askStyle = options.enforcementState?.askStyle || "nurture";
       const buyerIntent = options.enforcementState?.buyerIntent || "unknown";
-      const recentAsks = options.enforcementState?.recentAsks || [];
+      const draftInput = normalizeDraftInput(toolInput);
 
-      const { sanitized, changed, issues } = sanitizeDraftContent(toolInput);
-      let baseInput = changed ? sanitized : toolInput;
-      let draftInput = normalizeDraftInput(baseInput);
       if (draftInput) {
-        const originalQuestions = Array.isArray(draftInput.bodyParts.questions) ? draftInput.bodyParts.questions : [];
-        const filteredQuestions = originalQuestions.filter((q) => !isRepeatQuestion(q, recentAsks));
-        const removedRepeats = filteredQuestions.length !== originalQuestions.length;
-        const questionCapApplied = filteredQuestions.length > 3;
-        const updatedQuestions = filteredQuestions.slice(0, 3);
-        const updatedBodyParts = { ...draftInput.bodyParts, questions: updatedQuestions };
-        if (removedRepeats || questionCapApplied) {
-          issues.push("Removed repeated questions or capped question count");
-          baseInput = { ...baseInput, bodyParts: updatedBodyParts };
-          draftInput = normalizeDraftInput(baseInput);
-        }
         options.onDraftInput?.(draftInput);
       }
       
@@ -282,6 +174,22 @@ export function createPreToolHook(options: {
           }
         };
       }
+
+      const fatiguePresent = Boolean(options.enforcementState?.fatigueSignals?.present);
+      const invalidZeros = options.enforcementState?.invalidInboundZeros || [];
+      if (!fatiguePresent && invalidZeros.length > 0) {
+        return {
+          systemMessage: "Cannot be zero. If the number of agents or ticket volume is zero, it should be recorded as null. Ask a clarifying question to capture the correct value.",
+          hookSpecificOutput: {
+            hookEventName: pre.hook_event_name,
+            permissionDecision: "deny",
+            permissionDecisionReason: "Inbound numeric fields were zero and must be clarified."
+          }
+        };
+      }
+
+      const progressionGap = options.enforcementState?.progressionGap;
+      const requiresTimeline = progressionGap?.missingFields?.includes("timeline_for_change");
 
       if (askStyle === "question") {
         const questionCount = draftInput?.bodyParts?.questions?.length || 0;
@@ -297,13 +205,86 @@ export function createPreToolHook(options: {
         }
       }
 
-      const fatiguePresent = Boolean(options.enforcementState?.fatigueSignals?.present);
       const enforceCta =
         (askStyle === "cta") ||
         (askStyle === "nurture" && !fatiguePresent && buyerIntent !== "stop_contact");
 
-      if (enforceCta && draftInput) {
-        if (!draftInput.bodyParts.questions.length && !hasCta(draftInput.bodyParts)) {
+      if (draftInput) {
+        const body = buildDraftBody(draftInput.bodyParts);
+        if (!draftInput.subject.trim()) {
+          return {
+            systemMessage: "Draft requires a non-empty subject.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Missing subject."
+            }
+          };
+        }
+        if (body.length < 50) {
+          return {
+            systemMessage: "Draft body is too short. Expand the response before sending.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Draft body too short."
+            }
+          };
+        }
+        if (body.length > 5000) {
+          return {
+            systemMessage: "Draft body is too long. Shorten the response before sending.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Draft body too long."
+            }
+          };
+        }
+        const quality = await evaluateDraftQuality({
+          subject: draftInput.subject,
+          body,
+          questions: draftInput.bodyParts.questions,
+          context: { requiresTimeline: Boolean(requiresTimeline) && !fatiguePresent, enforceCta }
+        });
+
+        if (!quality) {
+          return {
+            systemMessage: "Draft quality check failed. Simplify and retry with a compliant async-only response.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Draft quality check failed."
+            }
+          };
+        }
+
+        if (quality.has_async_violation || quality.has_placeholder) {
+          const issues = quality.policy_violations.length
+            ? quality.policy_violations.join("; ")
+            : "Draft violates async-only policy or contains placeholders.";
+          return {
+            systemMessage: `Draft blocked: ${issues}`,
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Draft policy violations detected."
+            }
+          };
+        }
+
+        if (!fatiguePresent && requiresTimeline && !quality.mentions_timeline_question) {
+          return {
+            systemMessage: "Timeline required to advance stage. Ask a single question to capture the timeline for change.",
+            hookSpecificOutput: {
+              hookEventName: pre.hook_event_name,
+              permissionDecision: "deny",
+              permissionDecisionReason: "Missing required timeline clarification."
+            }
+          };
+        }
+
+        if (enforceCta && !draftInput.bodyParts.questions.length && !quality.has_cta) {
           return {
             systemMessage: "Draft requires a minimal CTA to advance the next commitment.",
             hookSpecificOutput: {
@@ -315,7 +296,7 @@ export function createPreToolHook(options: {
         }
       }
 
-      if (pricingIntent !== "none" && !catalogRead && draftInput && draftIncludesPricing(draftInput.bodyParts)) {
+      if (pricingIntent !== "none" && !catalogRead) {
         return {
           systemMessage: "QUOTE BLOCKED: Pricing intent detected but catalog not read. Use the Read tool on data/zendesk-products.json (or mcp__read_resource zendesk://products/catalog) before quoting.",
           hookSpecificOutput: {
@@ -325,14 +306,20 @@ export function createPreToolHook(options: {
           }
         };
       }
+    }
 
-      if (changed || issues.length > 0) {
+    if (toolName === "Skill") {
+      const pricingIntent = options.enforcementState?.pricingIntent || "none";
+      const catalogRead = options.enforcementState?.pricingCatalogRead;
+      const skillName = typeof toolInput.skill === "string" ? toolInput.skill : "";
+      if (skillName === "draft-reply" && pricingIntent !== "none" && !catalogRead) {
         return {
-          systemMessage: `Auto-correction applied to draft: ${issues.join("; ")}. Remember: this is an async-only agent - no meetings, calls, or demos.`,
+          systemMessage:
+            "QUOTE BLOCKED: Pricing intent detected but catalog not read. Use the Read tool on data/zendesk-products.json (or mcp__read_resource zendesk://products/catalog) before drafting a pricing response.",
           hookSpecificOutput: {
             hookEventName: pre.hook_event_name,
-            permissionDecision: "allow",
-            updatedInput: baseInput
+            permissionDecision: "deny",
+            permissionDecisionReason: "Pricing intent detected but catalog resource not read."
           }
         };
       }
@@ -679,10 +666,10 @@ export function buildSalesAgentHooks(callbacks: {
       }]
       : [],
     PreCompact: callbacks.additionalContext
-      ? [{ hooks: [async (input) => ({ hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: callbacks.additionalContext || "" } })] }]
+      ? [{ hooks: [async (input: PreCompactHookInput) => ({ hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: callbacks.additionalContext || "" } })] }]
       : [],
     PostToolUseFailure: [
-      { hooks: [async (input, toolUseId) => {
+      { hooks: [async (input: PostToolUseFailureHookInput, toolUseId?: string) => {
         const failInput = input as PostToolUseFailureHookInput;
         callbacks.onToolFailure?.(
           failInput.tool_name,

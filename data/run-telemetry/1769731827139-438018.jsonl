@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T00:10:27.140Z","runId":"1769731827139-438018","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"amara.okafor-0ff31d74-0@eval-121552.com","fromName":"Amara Okafor","verbose":true}}
+{"timestamp":"2026-01-30T00:10:27.140Z","runId":"1769731827139-438018","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T00:10:29.724Z","runId":"1769731827139-438018","event_type":"pre_llm_complete","payload":{"contactId":"285587484150","dealId":"234875024851"}}
+{"timestamp":"2026-01-30T00:10:31.038Z","runId":"1769731827139-438018","event_type":"deal_context_fetched","dealId":"234875024851","payload":{"dealStage":"2130118129"}}

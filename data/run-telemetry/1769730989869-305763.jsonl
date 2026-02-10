@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:56:29.870Z","runId":"1769730989869-305763","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"chloe.dubois-1bdcd3bc-0@eval-112132.com","fromName":"Chloe Dubois","verbose":true}}
+{"timestamp":"2026-01-29T23:56:29.870Z","runId":"1769730989869-305763","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:56:32.499Z","runId":"1769730989869-305763","event_type":"pre_llm_complete","payload":{"contactId":"285610444249","dealId":"235093390816"}}
+{"timestamp":"2026-01-29T23:56:33.809Z","runId":"1769730989869-305763","event_type":"deal_context_fetched","dealId":"235093390816","payload":{"dealStage":"2130118129"}}

@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T05:35:15.666Z","runId":"1769751315665-783196","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"sofia.chen-e99079b6-0@eval-552337.com","fromName":"Sofia Chen","verbose":true}}
+{"timestamp":"2026-01-30T05:35:15.666Z","runId":"1769751315665-783196","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T05:35:18.152Z","runId":"1769751315665-783196","event_type":"pre_llm_complete","payload":{"contactId":"285611028930","dealId":"235189446085"}}
+{"timestamp":"2026-01-30T05:35:19.379Z","runId":"1769751315665-783196","event_type":"deal_context_fetched","dealId":"235189446085","payload":{"dealStage":"2130118129"}}

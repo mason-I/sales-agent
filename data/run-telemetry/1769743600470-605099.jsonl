@@ -1,0 +1,5 @@
+{"timestamp":"2026-01-30T03:26:40.470Z","runId":"1769743600470-605099","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"kofi.okafor-7cf35680-0@eval-828517.com","fromName":"Kofi Okafor","verbose":true}}
+{"timestamp":"2026-01-30T03:26:40.470Z","runId":"1769743600470-605099","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T03:26:43.302Z","runId":"1769743600470-605099","event_type":"pre_llm_complete","payload":{"contactId":"285656621512","dealId":"235118642635"}}
+{"timestamp":"2026-01-30T03:26:44.708Z","runId":"1769743600470-605099","event_type":"deal_context_fetched","dealId":"235118642635","payload":{"dealStage":"2130118129"}}
+{"timestamp":"2026-01-30T03:26:58.967Z","runId":"1769743600470-605099","event_type":"inbound_signals","dealId":"235118642635","payload":{"agents_required":null,"ticket_volume_per_month":null,"support_channels":[],"primary_pain":"null","key_challenges":[],"timeline":null,"fatigue":null,"no_response_needed":false,"no_response_reason":null}}

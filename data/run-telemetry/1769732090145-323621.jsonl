@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T00:14:50.146Z","runId":"1769732090145-323621","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"marcus.coleman.iii-13aff136-0@eval-191992.com","fromName":"Marcus Coleman III","verbose":true}}
+{"timestamp":"2026-01-30T00:14:50.146Z","runId":"1769732090145-323621","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T00:14:52.898Z","runId":"1769732090145-323621","event_type":"pre_llm_complete","payload":{"contactId":"285811259838","dealId":"235160497616"}}
+{"timestamp":"2026-01-30T00:14:54.224Z","runId":"1769732090145-323621","event_type":"deal_context_fetched","dealId":"235160497616","payload":{"dealStage":"2130118129"}}

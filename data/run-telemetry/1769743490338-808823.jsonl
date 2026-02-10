@@ -1,0 +1,5 @@
+{"timestamp":"2026-01-30T03:24:50.338Z","runId":"1769743490338-808823","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"kofi.adebayo-404dee4e-0@eval-506986.com","fromName":"Kofi Adebayo","verbose":true}}
+{"timestamp":"2026-01-30T03:24:50.339Z","runId":"1769743490338-808823","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T03:24:53.020Z","runId":"1769743490338-808823","event_type":"pre_llm_complete","payload":{"contactId":"285546616286","dealId":"235118640579"}}
+{"timestamp":"2026-01-30T03:24:54.448Z","runId":"1769743490338-808823","event_type":"deal_context_fetched","dealId":"235118640579","payload":{"dealStage":"2130118129"}}
+{"timestamp":"2026-01-30T03:25:27.795Z","runId":"1769743490338-808823","event_type":"inbound_signals","dealId":"235118640579","payload":{"agents_required":null,"ticket_volume_per_month":null,"support_channels":[],"primary_pain":null,"key_challenges":[],"timeline":null,"fatigue":null,"no_response_needed":false,"no_response_reason":null}}

@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T03:34:35.605Z","runId":"1769744075605-953187","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"marcus.chen-67f8b3bf-0@eval-961361.com","fromName":"Marcus Chen","verbose":true}}
+{"timestamp":"2026-01-30T03:34:35.606Z","runId":"1769744075605-953187","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T03:34:37.860Z","runId":"1769744075605-953187","event_type":"pre_llm_complete","payload":{"contactId":"285492187586","dealId":"235164249563"}}
+{"timestamp":"2026-01-30T03:34:39.155Z","runId":"1769744075605-953187","event_type":"deal_context_fetched","dealId":"235164249563","payload":{"dealStage":"2130118129"}}

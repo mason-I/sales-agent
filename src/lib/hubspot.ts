@@ -239,6 +239,10 @@ export async function updateTask(taskId: string, properties: Record<string, stri
   return await hubspotRequest<any>("PATCH", `/crm/v3/objects/tasks/${taskId}`, { properties });
 }
 
+export async function deleteTask(taskId: string) {
+  return await hubspotRequest<any>("DELETE", `/crm/v3/objects/tasks/${taskId}`);
+}
+
 export async function fetchDealEngagements(dealId: string) {
   const engagements: Array<{
     id: string;

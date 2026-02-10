@@ -1,0 +1,5 @@
+{"timestamp":"2026-01-30T03:00:20.919Z","runId":"1769742020919-302107","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"theresa.chen-73e1687b-0@eval-352600.com","fromName":"Theresa Chen","verbose":true}}
+{"timestamp":"2026-01-30T03:00:20.919Z","runId":"1769742020919-302107","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T03:00:24.047Z","runId":"1769742020919-302107","event_type":"pre_llm_complete","payload":{"contactId":"285928177096","dealId":"235279887840"}}
+{"timestamp":"2026-01-30T03:00:25.603Z","runId":"1769742020919-302107","event_type":"deal_context_fetched","dealId":"235279887840","payload":{"dealStage":"2130118129"}}
+{"timestamp":"2026-01-30T03:00:40.364Z","runId":"1769742020919-302107","event_type":"inbound_signals","dealId":"235279887840","payload":{"agents_required":null,"ticket_volume_per_month":null,"support_channels":[],"primary_pain":"null","key_challenges":[],"no_response_needed":false,"no_response_reason":null}}

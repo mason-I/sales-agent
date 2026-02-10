@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { createTask, fetchDealTaskIds, fetchTask, updateTask } from "../lib/hubspot";
+import { createTask, deleteTask, fetchDealTaskIds, fetchTask, updateTask } from "../lib/hubspot";
 
-export type SdkTaskStatus = "pending" | "in_progress" | "completed";
+export type SdkTaskStatus = "pending" | "in_progress" | "completed" | "deleted";
 export type HubSpotTaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 
 export type TaskLifecycleEvent = {
@@ -102,10 +102,23 @@ export async function mirrorSdkTaskToHubSpot(params: {
   sdkStatus: SdkTaskStatus;
   summary: string;
   description?: string | null;
-}): Promise<{ hubspotTaskId?: string | null; hubspotStatus?: string | null; action: "created" | "updated" | "skipped"; error?: string | null }> {
+}): Promise<{ hubspotTaskId?: string | null; hubspotStatus?: string | null; action: "created" | "updated" | "deleted" | "skipped"; error?: string | null }> {
   const { dealId, sdkTaskId, sdkStatus, summary, description } = params;
   if (!dealId) {
     return { action: "skipped", error: "Missing dealId" };
+  }
+
+  if (sdkStatus === "deleted") {
+    try {
+      const existing = await findHubSpotTaskForSdkId(dealId, sdkTaskId);
+      if (!existing) {
+        return { action: "skipped", error: "HubSpot task not found" };
+      }
+      await deleteTask(existing.id);
+      return { action: "deleted", hubspotTaskId: existing.id, hubspotStatus: null };
+    } catch (error: any) {
+      return { action: "skipped", error: error?.message || String(error) };
+    }
   }
 
   const hubspotStatus = mapSdkToHubSpotStatus(sdkStatus);
@@ -163,6 +176,12 @@ export async function validateTaskMirror(params: {
   const mismatched: Array<{ taskId: string; expected: string; actual: string | null }> = [];
   for (const item of expected) {
     const mapped = taskMap.get(item.taskId);
+    if (item.status === "deleted") {
+      if (mapped) {
+        mismatched.push({ taskId: item.taskId, expected: "DELETED", actual: mapped.status });
+      }
+      continue;
+    }
     if (!mapped) {
       missing.push(item.taskId);
       continue;
