@@ -19,6 +19,8 @@ import type {
 import { STAGE_ORDER, STAGE_NAMES } from "../config/dealStage";
 import { deriveCommitmentState, fetchCommitmentArtifacts } from "../runtime/commitment";
 import { join } from "path";
+import { extractInboundSignalsSemantic } from "../runtime/inboundSignals";
+import { createTelemetryLogger } from "../runtime/telemetry";
 
 type ConversationConfig = {
   runId: string;
@@ -112,6 +114,11 @@ export async function runConversation(
 ): Promise<ConversationResult> {
   const conversationId = `${config.runId}-${String(config.conversationIndex).padStart(3, "0")}`;
   const startedAt = new Date().toISOString();
+  const telemetryPath = join(process.cwd(), "data", "eval-runs", config.runId, "traces", `${conversationId}.jsonl`);
+  const telemetry = createTelemetryLogger({
+    filePath: telemetryPath,
+    defaults: { runId: config.runId, conversationId }
+  });
 
   const transcript: Turn[] = [];
   const turns: TurnNote[] = [];
@@ -134,6 +141,10 @@ export async function runConversation(
   if (config.logProgress) {
     console.log(`[Conv ${conversationId}] Starting with persona: ${persona.id} (${persona.name})`);
   }
+  telemetry.log({
+    event_type: "conversation_start",
+    payload: { personaId: persona.id, personaName: persona.name }
+  });
   if (config.verbose) {
     console.log(`[Conv ${conversationId}] Verbose logging enabled`);
   }
@@ -165,12 +176,20 @@ export async function runConversation(
     if (config.logProgress) {
       console.log(`[Conv ${conversationId}] Turn ${turnNumber} - Customer: "${initialInquiry.message.slice(0, 50)}..."`);
     }
+    telemetry.log({
+      event_type: "customer_message",
+      payload: { turnNumber, message: initialInquiry.message }
+    });
 
     // Agent processes Turn 1 (new_inbound)
     const agentTurnStart = new Date();
     if (config.verbose) {
       console.log(`[Conv ${conversationId}] Agent run start (turn ${turnNumber})`);
     }
+    telemetry.log({
+      event_type: "agent_run_start",
+      payload: { turnNumber, source: "new_inbound" }
+    });
     const agentResult = await runSalesAgent({
       source: "new_inbound",
       type: "email",
@@ -186,6 +205,10 @@ export async function runConversation(
     if (config.verbose) {
       console.log(`[Conv ${conversationId}] Agent run complete (turn ${turnNumber})`);
     }
+    telemetry.log({
+      event_type: "agent_run_complete",
+      payload: { turnNumber, error: agentResult.error || null }
+    });
 
     const turnCompleted = new Date();
 
@@ -206,6 +229,10 @@ export async function runConversation(
       role: "agent",
       message: agentResponseText || "[No response logged]",
       timestamp: turnCompleted.toISOString()
+    });
+    telemetry.log({
+      event_type: "agent_response",
+      payload: { turnNumber, message: agentResponseText || "" }
     });
 
     turns.push({
@@ -278,6 +305,10 @@ export async function runConversation(
           message: customerResponse.message,
           timestamp: new Date().toISOString()
         });
+        telemetry.log({
+          event_type: "customer_message",
+          payload: { turnNumber, message: customerResponse.message }
+        });
 
         if (config.logProgress) {
           console.log(`[Conv ${conversationId}] Turn ${turnNumber} - Customer: "${customerResponse.message.slice(0, 50)}..."`);
@@ -286,6 +317,28 @@ export async function runConversation(
         if (customerResponse.shouldEnd) {
           outcome = determineOutcome(customerResponse.endReason);
           endReason = customerResponse.endReason || "Customer ended conversation";
+          telemetry.log({
+            event_type: "customer_ended",
+            payload: { turnNumber, endReason }
+          });
+          break;
+        }
+
+        const noResponseSignals = await extractInboundSignalsSemantic(
+          customerResponse.message,
+          () => {}
+        );
+        if (noResponseSignals?.no_response_needed) {
+          const reason = noResponseSignals.no_response_reason || "Model classified acknowledgement-only reply.";
+          outcome = "stalled";
+          endReason = `No response needed. ${reason}`;
+          if (config.logProgress) {
+            console.log(`[Conv ${conversationId}] Conversation complete: ${reason}`);
+          }
+          telemetry.log({
+            event_type: "no_response_needed",
+            payload: { turnNumber, reason }
+          });
           break;
         }
 
@@ -294,6 +347,10 @@ export async function runConversation(
         if (config.verbose) {
           console.log(`[Conv ${conversationId}] Agent run start (turn ${turnNumber})`);
         }
+        telemetry.log({
+          event_type: "agent_run_start",
+          payload: { turnNumber, source: "reply_to_existing" }
+        });
         const replyResult = await runSalesAgent({
           source: "reply_to_existing",
           type: "email",
@@ -310,6 +367,10 @@ export async function runConversation(
         if (config.verbose) {
           console.log(`[Conv ${conversationId}] Agent run complete (turn ${turnNumber})`);
         }
+        telemetry.log({
+          event_type: "agent_run_complete",
+          payload: { turnNumber, error: replyResult.error || null }
+        });
 
         const replyTurnCompleted = new Date();
 
@@ -317,6 +378,18 @@ export async function runConversation(
         // entities.engagementIds.push(...);
 
         const replyAgentResponse = replyResult.lastDraft?.body?.trim() || "";
+        if (replyResult.noResponseNeeded) {
+          outcome = "stalled";
+          endReason = replyResult.noResponseReason || "No response needed";
+          if (config.logProgress) {
+            console.log(`[Conv ${conversationId}] Agent skipped reply: ${endReason}`);
+          }
+          telemetry.log({
+            event_type: "agent_no_response",
+            payload: { turnNumber, endReason }
+          });
+          break;
+        }
         if (replyResult.lastDraft?.emailId) {
           entities.engagementIds.push(replyResult.lastDraft.emailId);
         }
@@ -327,6 +400,10 @@ export async function runConversation(
           role: "agent",
           message: replyAgentResponse || "[Agent response logged to HubSpot]",
           timestamp: replyTurnCompleted.toISOString()
+        });
+        telemetry.log({
+          event_type: "agent_response",
+          payload: { turnNumber, message: replyAgentResponse || "" }
         });
 
         turns.push({
@@ -377,6 +454,11 @@ export async function runConversation(
   if (config.logProgress) {
     console.log(`[Conv ${conversationId}] Completed - Outcome: ${outcome}, Turns: ${turns.length}`);
   }
+  telemetry.log({
+    event_type: "conversation_complete",
+    payload: { outcome, endReason, turns: turns.length }
+  });
+  telemetry.flushAndClose();
 
   const errorCategory = classifyErrorCategory(lastError);
 

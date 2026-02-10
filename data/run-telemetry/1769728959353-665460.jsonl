@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:22:39.354Z","runId":"1769728959353-665460","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"aisha.patel-7f912d89-0@eval-628650.com","fromName":"Aisha Patel","verbose":true}}
+{"timestamp":"2026-01-29T23:22:39.354Z","runId":"1769728959353-665460","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:22:41.985Z","runId":"1769728959353-665460","event_type":"pre_llm_complete","payload":{"contactId":"285674948027","dealId":"235087982044"}}
+{"timestamp":"2026-01-29T23:22:43.337Z","runId":"1769728959353-665460","event_type":"deal_context_fetched","dealId":"235087982044","payload":{"dealStage":"2130118129"}}

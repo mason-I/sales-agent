@@ -1,9 +1,10 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { DERIVED_STATE_SCHEMA, NEXT_ACTION_SCHEMA, DRAFT_EVIDENCE_SCHEMA } from "./schemas";
-import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "./claude";
+import { getClaudeCodePath, getClaudeEnv } from "./claude";
 import { formatSummaryForPrompt } from "./summary";
 import { STAGE_NAMES, STAGE_ORDER } from "../config/dealStage";
 import { fetchDealProperties, hubspotRequest } from "../lib/hubspot";
+import { collectStructuredOutput } from "./structuredOutput";
 
 const COMMITMENT_ORDER = [...STAGE_ORDER, "closedlost"];
 
@@ -60,45 +61,6 @@ export type DraftEvidence = {
 const INVOICE_PROPERTIES = ["hs_invoice_status", "hs_invoice_url", "hs_invoice_link", "hs_createdate"];
 const STRUCTURED_QUERY_TIMEOUT_MS = 120000;
 
-async function collectStructuredOutput<T>(
-  runner: ReturnType<typeof query>,
-  timeoutMs: number,
-  label: string
-): Promise<T | null> {
-  let structured: T | null = null;
-  const timeoutId = setTimeout(() => {
-    console.warn(`[Commitment] ${label} timed out after ${timeoutMs}ms, closing query.`);
-    runner.close();
-  }, timeoutMs);
-
-  try {
-    for await (const message of runner) {
-      if (message?.type === "result" && message.structured_output) {
-        structured = message.structured_output as T;
-      } else if (message?.type === "result" && message.is_error) {
-        const errors = Array.isArray(message.errors) ? message.errors.join("; ") : "unknown error";
-        console.warn(`[Commitment] Structured output error (${message.subtype}): ${errors}`);
-      } else if (message?.type === "result" && typeof message.result === "string") {
-        const trimmed = message.result.trim();
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-          try {
-            structured = JSON.parse(trimmed) as T;
-          } catch {
-            // ignore invalid JSON in result
-          }
-        }
-      }
-      const extracted = extractStructuredOutput(message);
-      if (extracted !== null && extracted !== undefined) {
-        structured = extracted as T;
-      }
-    }
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  return structured;
-}
 
 export async function fetchCommitmentArtifacts(dealId: string): Promise<CommitmentArtifacts> {
   const properties = await fetchDealProperties(dealId, ["hs_num_of_associated_line_items"]);
@@ -151,7 +113,6 @@ export async function evaluateDraftEvidence({
   invoiceLink?: string | null;
   timeoutMs?: number;
 }): Promise<DraftEvidence> {
-  const pricingPattern = /\$[\d,]+(?:\.\d{1,2})?|\bUSD\b|\bper\s+agent\b/i.test(draft.body);
   const invoiceLinkPresent = invoiceLink ? draft.body.includes(invoiceLink) : false;
 
   const systemPrompt = `You evaluate whether an email draft includes explicit pricing and an invoice link.
@@ -169,7 +130,6 @@ ${draft.body}
 Invoice Link (if any): ${invoiceLink || "(none)"}
 
 Deterministic signals:
-- pricingPatternFound: ${pricingPattern}
 - invoiceLinkPresent: ${invoiceLinkPresent}`;
 
   const structured = await collectStructuredOutput<DraftEvidence>(
@@ -195,15 +155,15 @@ Deterministic signals:
 
   if (!structured) {
     return {
-      pricingIncluded: pricingPattern,
-      pricingEvidence: pricingPattern ? "Detected pricing pattern in draft." : null,
+      pricingIncluded: false,
+      pricingEvidence: null,
       invoiceLinkIncluded: invoiceLinkPresent,
       invoiceEvidence: invoiceLinkPresent ? "Detected invoice link in draft." : null
     };
   }
 
   return {
-    pricingIncluded: Boolean(structured.pricingIncluded) && pricingPattern,
+    pricingIncluded: Boolean(structured.pricingIncluded),
     pricingEvidence: structured.pricingEvidence ?? null,
     invoiceLinkIncluded: Boolean(structured.invoiceLinkIncluded) && invoiceLinkPresent,
     invoiceEvidence: structured.invoiceEvidence ?? null
@@ -301,7 +261,7 @@ export async function deriveNextActionPolicy({
   dealSummary: any;
   event?: { subject?: string | null; body?: string | null };
   timeoutMs?: number;
-}) {
+}): Promise<NextActionPolicy> {
   const summaryText = formatSummaryForPrompt(normalizeSummary(dealSummary) || null);
   const summaryExcerpt = summaryText.length > 600 ? `${summaryText.slice(0, 597)}...` : summaryText;
 

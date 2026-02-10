@@ -28,6 +28,12 @@ bun eval -- --count 10 --concurrency 3
 
 # Full regression suite (20 conversations, 5 parallel)
 bun eval -- --count 20 --concurrency 5
+
+# Verbose run (streams live agent/tool activity to console)
+bun eval -- --count 1 --concurrency 1 --verbose
+
+# Cap turns to avoid long-running evals
+bun eval -- --count 1 --concurrency 1 --max-turns 8
 ```
 
 **Available Personas:**

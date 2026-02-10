@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:08:28.695Z","runId":"1769728108695-765562","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"amara.wong-b2b0d17c-0@eval-766508.com","fromName":"Amara Wong","verbose":true}}
+{"timestamp":"2026-01-29T23:08:28.696Z","runId":"1769728108695-765562","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:08:31.159Z","runId":"1769728108695-765562","event_type":"pre_llm_complete","payload":{"contactId":"285745809904","dealId":"234878591443"}}
+{"timestamp":"2026-01-29T23:08:32.471Z","runId":"1769728108695-765562","event_type":"deal_context_fetched","dealId":"234878591443","payload":{"dealStage":"2130118129"}}

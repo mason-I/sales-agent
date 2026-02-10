@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T00:05:27.352Z","runId":"1769731527352-996768","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"brandon.andersson-b752655b-0@eval-742526.com","fromName":"Brandon Andersson","verbose":true}}
+{"timestamp":"2026-01-30T00:05:27.352Z","runId":"1769731527352-996768","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T00:05:30.000Z","runId":"1769731527352-996768","event_type":"pre_llm_complete","payload":{"contactId":"285672827353","dealId":"234959131125"}}
+{"timestamp":"2026-01-30T00:05:31.323Z","runId":"1769731527352-996768","event_type":"deal_context_fetched","dealId":"234959131125","payload":{"dealStage":"2130118129"}}

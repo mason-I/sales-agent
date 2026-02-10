@@ -11,12 +11,12 @@ async function test() {
     console.log("ANTHROPIC_BASE_URL:", process.env.ANTHROPIC_BASE_URL);
 
     const options = {
-        model: "sonnet",
+        model: "opus",
         executable: "bun",
         pathToClaudeCodeExecutable: getClaudeCodePath(),
         env: getClaudeEnv(),
         systemPrompt: { type: "preset", preset: "claude_code", append: "You are a test agent." },
-        settingSources: ["project", "user"] as any,
+        settingSources: ["user", "project"] as any,
     };
 
     try {

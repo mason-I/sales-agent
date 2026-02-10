@@ -4,11 +4,11 @@ import { resolve, dirname } from "path";
 import { readFileSync, createWriteStream, mkdirSync } from "fs";
 import { loadEnv } from "../lib/env";
 import { runPreLlm } from "./preLlm";
-import { fetchDealProperties, updateDealProperties, fetchDealEngagements, hubspotRequest } from "../lib/hubspot";
+import { fetchDealProperties, updateDealProperties, fetchDealEngagements, hubspotRequest, createDealNote } from "../lib/hubspot";
 import { createSalesMcpServer } from "../tools/mcp";
-import { getClaudeCodePath, getClaudeEnv, extractStructuredOutput } from "./claude";
+import { getClaudeCodePath, getClaudeEnv } from "./claude";
 import { buildSystemPrompt, buildEventPrompt, type DealContext, type EventContext } from "./systemPrompt";
-import { buildSalesAgentHooks, createEnforcementState } from "./hooks";
+import { buildSalesAgentHooks, createEnforcementState, type EnforcementState } from "./hooks";
 import { STAGE_NAMES } from "../config/dealStage";
 import { createRunNote, appendRunNote, buildPlanSummary, buildJudgeSummary, buildExecutionSummary, type TaskLifecycleSummary } from "./runNotes";
 import { buildStreamingPrompt } from "./promptStream";
@@ -16,7 +16,8 @@ import { generateDealSummary, updateDealSummary } from "./summary";
 import { deriveCommitmentState, deriveNextActionPolicy, fetchCommitmentArtifacts, evaluateDraftEvidence } from "./commitment";
 import { advanceCommitmentStage, computeCommitmentGap, fetchStageProperties } from "./commitmentStage";
 import { mirrorSdkTaskToHubSpot, readTaskSummaryFromDisk, validateTaskMirror, type SdkTaskStatus } from "./taskMirror";
-import { INBOUND_SIGNAL_SCHEMA } from "./schemas";
+import { extractInboundSignalsSemantic, type InboundSignalResult } from "./inboundSignals";
+import { createTelemetryLogger } from "./telemetry";
 
 const MCP_PREFIX = "mcp__sales-crm__";
 
@@ -107,6 +108,8 @@ type AgentResult = {
   sessionId: string | null;
   lastDraft?: { subject: string; body: string; emailId?: string | null } | null;
   error?: string;
+  noResponseNeeded?: boolean;
+  noResponseReason?: string;
 };
 
 type EmailDraft = { subject: string; body: string; emailId?: string | null };
@@ -209,283 +212,17 @@ function isPositiveNumber(value: unknown): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 
-function extractAgentsRequired(text: string): number | null {
-  const lower = text.toLowerCase();
-  if (
-    /\bjust me\b/.test(lower) ||
-    /\bonly me\b/.test(lower) ||
-    /\bsolo (operator|founder|agent)\b/.test(lower) ||
-    /\bsingle (person|agent)\b/.test(lower) ||
-    /\bone[-\s]person\b/.test(lower) ||
-    /\bone person\b/.test(lower)
-  ) {
-    return 1;
-  }
-
-  const spelled = /\bone or two\b/.test(lower);
-  if (spelled) return 1;
-
-  const range = lower.match(/(\d+)\s*(?:-|to)\s*(\d+)\s*(agents?|people|reps?|support|operators?)/);
-  if (range) {
-    const min = Number(range[1]);
-    return Number.isFinite(min) && min > 0 ? min : null;
-  }
-
-  const single = lower.match(/(\d+)\s*(agents?|people|reps?|support|operators?)/);
-  if (single) {
-    const count = Number(single[1]);
-    return Number.isFinite(count) && count > 0 ? count : null;
-  }
-
-  return null;
-}
-
-function addMonths(base: Date, months: number): Date {
-  const copy = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
-  copy.setUTCMonth(copy.getUTCMonth() + months);
-  return copy;
-}
-
-function addDays(base: Date, days: number): Date {
-  const copy = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
-  copy.setUTCDate(copy.getUTCDate() + days);
-  return copy;
-}
-
-function extractTimelineForChange(text: string, now = new Date()): number | null {
-  const lower = text.toLowerCase();
-
-  const explicitDate = Date.parse(text);
-  if (!isNaN(explicitDate)) {
-    const asDate = new Date(explicitDate);
-    const dateOnly = new Date(Date.UTC(asDate.getUTCFullYear(), asDate.getUTCMonth(), asDate.getUTCDate()));
-    return dateOnly.getTime();
-  }
-
-  if (/\bnext year\b/.test(lower) || /\bearly next year\b/.test(lower)) {
-    const year = now.getUTCFullYear() + 1;
-    return Date.UTC(year, 0, 1);
-  }
-
-  if (/\bthis week\b/.test(lower) || /\basap\b/.test(lower)) {
-    return addDays(now, 7).getTime();
-  }
-
-  if (
-    /\bas soon as possible\b/.test(lower) ||
-    /\bas soon as we can\b/.test(lower) ||
-    /\bready to (move forward|proceed|get started|start)\b/.test(lower) ||
-    /\bmove forward\b/.test(lower) ||
-    /\bmove ahead\b/.test(lower) ||
-    /\bget started\b/.test(lower) ||
-    /\bstart immediately\b/.test(lower) ||
-    /\bright away\b/.test(lower) ||
-    /\bimmediately\b/.test(lower)
-  ) {
-    return addDays(now, 7).getTime();
-  }
-
-  if (/\bthis month\b/.test(lower)) {
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    const endOfMonth = new Date(Date.UTC(year, month + 1, 0));
-    return endOfMonth.getTime();
-  }
-
-  if (/\bthis year\b/.test(lower)) {
-    const year = now.getUTCFullYear();
-    return Date.UTC(year, 11, 31);
-  }
-
-  if (/\bthis quarter\b/.test(lower)) {
-    const quarter = Math.floor(now.getUTCMonth() / 3);
-    const year = now.getUTCFullYear();
-    const endOfQuarter = new Date(Date.UTC(year, quarter * 3 + 3, 0));
-    return endOfQuarter.getTime();
-  }
-
-  const thisQuarterMatch = lower.match(/\bthis\s+q([1-4])\b/);
-  if (thisQuarterMatch) {
-    const q = Number(thisQuarterMatch[1]);
-    if (Number.isFinite(q) && q >= 1 && q <= 4) {
-      const year = now.getUTCFullYear();
-      const endOfQuarter = new Date(Date.UTC(year, q * 3, 0));
-      return endOfQuarter.getTime();
-    }
-  }
-
-  const nextQuarter = /\bnext quarter\b/.test(lower);
-  if (nextQuarter) {
-    const currentQuarter = Math.floor(now.getUTCMonth() / 3);
-    const targetQuarter = (currentQuarter + 1) % 4;
-    const year = now.getUTCFullYear() + (currentQuarter === 3 ? 1 : 0);
-    return Date.UTC(year, targetQuarter * 3, 1);
-  }
-
-  const quarterMatch = lower.match(/\bq([1-4])\b(?:\s*(\d{4}))?/);
-  if (quarterMatch) {
-    const q = Number(quarterMatch[1]);
-    const yearFromText = quarterMatch[2] ? Number(quarterMatch[2]) : null;
-    const currentQuarter = Math.floor(now.getUTCMonth() / 3) + 1;
-    const year = yearFromText ?? (q < currentQuarter ? now.getUTCFullYear() + 1 : now.getUTCFullYear());
-    return Date.UTC(year, (q - 1) * 3, 1);
-  }
-
-  const inMonths = lower.match(/\bin\s+(\d+)\s*(month|months|mo)\b/);
-  if (inMonths) {
-    const months = Number(inMonths[1]);
-    if (Number.isFinite(months) && months > 0) {
-      return addMonths(now, months).getTime();
-    }
-  }
-
-  if (
-    /\bmonth or two\b/.test(lower) ||
-    /\bmonth or 2\b/.test(lower) ||
-    /\bmonth or so\b/.test(lower) ||
-    /\bnext month or two\b/.test(lower) ||
-    /\bnext couple of months\b/.test(lower) ||
-    /\bcouple of months\b/.test(lower)
-  ) {
-    return addMonths(now, 2).getTime();
-  }
-
-  const inWeeks = lower.match(/\bin\s+(\d+)\s*(week|weeks|wk|wks)\b/);
-  if (inWeeks) {
-    const weeks = Number(inWeeks[1]);
-    if (Number.isFinite(weeks) && weeks > 0) {
-      return addDays(now, weeks * 7).getTime();
-    }
-  }
-
-  const inYears = lower.match(/\bin\s+(\d+)\s*(year|years)\b/);
-  if (inYears) {
-    const years = Number(inYears[1]);
-    if (Number.isFinite(years) && years > 0) {
-      return Date.UTC(now.getUTCFullYear() + years, 0, 1);
-    }
-  }
-
-  if (/\bnext month\b/.test(lower)) {
-    return addMonths(now, 1).getTime();
-  }
-
-  if (/\bnext week\b/.test(lower)) {
-    return addDays(now, 7).getTime();
-  }
-
-  return null;
-}
-
-function extractTicketVolumePerMonth(text: string): number | null {
-  const lower = text.toLowerCase();
-  const monthlyMatch = lower.match(/(\d[\d,]*)\s*(tickets|inquiries|requests)\b.*\b(per\s+month|monthly|\/month)\b/);
-  if (monthlyMatch) {
-    const value = Number(monthlyMatch[1].replace(/,/g, ""));
-    return Number.isFinite(value) && value > 0 ? value : null;
-  }
-
-  const weeklyMatch = lower.match(/(\d[\d,]*)\s*(tickets|inquiries|requests)\b.*\b(per\s+week|weekly|\/week)\b/);
-  if (weeklyMatch) {
-    const value = Number(weeklyMatch[1].replace(/,/g, ""));
-    if (Number.isFinite(value) && value > 0) {
-      return value * 4;
-    }
-  }
-
-  return null;
-}
-
-function extractPrimaryPain(text: string): string | null {
-  const lower = text.toLowerCase();
-  if (
-    /\bno pain points\b/.test(lower) ||
-    /\bhaven't identified\b/.test(lower) ||
-    /\bnot identified\b/.test(lower) ||
-    /\bmostly curious\b/.test(lower) ||
-    /\bjust curious\b/.test(lower) ||
-    /\bexploratory phase\b/.test(lower)
-  ) {
-    return "Not identified yet (exploratory)";
-  }
-
-  return null;
-}
-
-function extractKeyChallenge(text: string): string | null {
-  const lower = text.toLowerCase();
-  if (/\bseasonal\b/.test(lower) || /\bseasonality\b/.test(lower) || /\bseasonal (spikes|fluctuations)\b/.test(lower)) {
-    return "Seasonal volume fluctuations";
-  }
-  return null;
-}
-
-function inferFatigueFromText(text: string): { present: boolean; rationale: string } | null {
-  const lower = text.toLowerCase();
-  
-  // Explicitly handle short politeness-only responses which usually signal end of current turn/topic
-  const clean = lower.replace(/[^a-z\s]/g, "").trim();
-  if (["thanks", "thank you", "thanks for now", "ok thanks", "okay thanks", "thanks bye", "appreciate it", "will do", "sounds good"].includes(clean)) {
-    return { present: true, rationale: "Short politeness-only response detected." };
-  }
-
-  const signals = [
-    /\bjust (curious|looking|exploring)\b/,
-    /\b(exploring|checking) options\b/,
-    /\bmostly (curious|looking)\b/,
-    /\bno pain points\b/,
-    /\bhaven't identified\b/,
-    /\bexploratory phase\b/,
-    /\bmaybe next year\b/,
-    /\bnext year\b/,
-    /\bcircle back\b/,
-    /\bnot urgent\b/,
-    /\bno rush\b/,
-    /\bwe have what we need\b/,
-    /\bi have what i need\b/,
-    /\bthat's (all|it)\b/,
-    /\bno further questions\b/,
-    /\bno more questions\b/,
-    /\bwe'?ll (get back|follow up|circle back|be in touch|let you know|take a look|review)\b/,
-    /\bi'?ll (get back|follow up|circle back|be in touch|let you know|take a look|review)\b/,
-    /\bdecision (next|early) week\b/,
-    /\bearly next week\b/,
-    /\bdiscuss (internally|with (my|our|the) team)\b/,
-    /\bwe'?ll discuss\b/,
-    /\bwe'?ll review\b/,
-    /\bfiguring (it|that) out\b/,
-    /\bappreciate (you|it|that|the|your)\b/,
-    /\bthanks (again|so much|a lot)\b/,
-    /\bthank you (again|so much|a lot)\b/
-  ];
-  if (signals.some((s) => s.test(lower))) {
-    return { present: true, rationale: "Heuristic low-intent/time-waster signals in customer reply." };
-  }
-  return null;
-}
-
-type InboundSignalResult = {
-  agents_required: number | null;
-  ticket_volume_per_month: number | null;
-  support_channels: string[];
-  primary_pain: string | null;
-  key_challenges: string[];
-  timeline: { date_utc: string | null; urgency: "high" | "medium" | "low" | "unknown"; rationale: string };
-  fatigue: { present: boolean; rationale: string };
-};
 
 function parseUtcDate(value: string | null): number | null {
   if (!value || typeof value !== "string") return null;
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  return Date.UTC(year, month - 1, day);
+  const parsed = Date.parse(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed)) return null;
+  const asDate = new Date(parsed);
+  return Date.UTC(asDate.getUTCFullYear(), asDate.getUTCMonth(), asDate.getUTCDate());
 }
 
 function coerceWholeNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
   if (!Number.isFinite(num)) return null;
   const rounded = Math.round(num);
@@ -498,7 +235,10 @@ function sanitizeTextValue(value: unknown): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const lower = trimmed.toLowerCase();
-  if (["null", "none", "n/a", "na", "unknown", "not provided"].includes(lower)) {
+  if (["null", "none", "n/a", "na", "unknown", "not provided", "not applicable"].includes(lower)) {
+    return null;
+  }
+  if (lower.startsWith("none ") || lower.startsWith("none-") || lower.startsWith("none:")) {
     return null;
   }
   return trimmed;
@@ -523,163 +263,98 @@ function normalizeSupportChannels(values: string[]) {
   return Array.from(normalized);
 }
 
-async function extractInboundSignalsSemantic(
-  body: string,
-  logVerbose: (message: string) => void
-): Promise<InboundSignalResult | null> {
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
-  const timeoutMs = 30000;
-  const prompt = `You are an information extractor for a sales agent. Extract semantic signals from the customer's message.
-
-TODAY (UTC): ${todayIso}
-
-Return JSON that follows the provided schema exactly. Rules:
-- Use only the customer's message. Do not invent or infer beyond what is stated.
-- Support channels must be canonical values from this list: email, help_center, web_and_mobile_messaging, social_messaging, voice, text, live_chat, web_widget_classic, mobile_sdk, api, channel_integrations, computer_telephony_integration, closed_tickets.
-- If a value is not stated, return null (or empty array for lists).
-- Timeline: if the customer gives a timeframe, convert it to a UTC date string (YYYY-MM-DD) using TODAY. If unclear, return null. Include urgency (high/medium/low/unknown) and a short rationale.
-- Fatigue: set present=true ONLY when the customer explicitly signals they have what they need, are done, will decide later, want to wait, are not ready yet, or are just looking/just exploring/still early. Otherwise false. Provide a brief rationale either way.
-
-CUSTOMER MESSAGE:
-${body}`;
-
-  let structured: InboundSignalResult | null = null;
-  const runner = query({
-    prompt: buildStreamingPrompt(prompt),
-    options: {
-      model: "opus",
-      executable: "bun",
-      pathToClaudeCodeExecutable: getClaudeCodePath(),
-      env: getClaudeEnv(),
-      systemPrompt: { type: "preset", preset: "claude_code", append: "Return structured JSON only." },
-      settingSources: ["user", "project"],
-      allowedTools: ["StructuredOutput"],
-      outputFormat: { type: "json_schema", schema: INBOUND_SIGNAL_SCHEMA },
-      allowDangerouslySkipPermissions: true,
-      permissionMode: "bypassPermissions",
-      maxThinkingTokens: 256
-    }
-  });
-  const timeoutId = setTimeout(() => {
-    logVerbose(`[Agent] Semantic extraction timed out after ${timeoutMs}ms`);
-    runner.close();
-  }, timeoutMs);
-
-  try {
-    logVerbose("[Agent] Semantic extraction start");
-    for await (const message of runner) {
-      if (message.type === "result" && message.structured_output) {
-        structured = message.structured_output as InboundSignalResult;
-      }
-      const extracted = extractStructuredOutput(message);
-      if (extracted) {
-        structured = extracted as InboundSignalResult;
-      }
-    }
-  } catch (error: any) {
-    logVerbose(`[Agent] Semantic extraction failed: ${error?.message || error}`);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!structured) {
-    logVerbose("[Agent] Semantic signal extraction returned no structured output.");
-    return null;
-  }
-
-  return structured;
-}
-
 async function applyInboundSignalUpdates({
   dealId,
   dealProperties,
   body,
-  logVerbose
+  logVerbose,
+  enforcementState
 }: {
   dealId: string;
   dealProperties: Record<string, any>;
   body?: string;
   logVerbose: (message: string) => void;
+  enforcementState?: EnforcementState;
 }): Promise<InboundSignalResult | null> {
   if (!body) return null;
 
   const updates: Record<string, string> = {};
+  const invalidZeros: string[] = [];
   const semanticSignals = await extractInboundSignalsSemantic(body, logVerbose);
 
-  if (semanticSignals) {
-    const agents = coerceWholeNumber(semanticSignals.agents_required);
-    if (agents && agents > 0 && !isPositiveNumber(dealProperties.agents_required)) {
+  if (!semanticSignals) {
+    throw new Error("Semantic extraction failed or timed out; blocking turn to avoid missing CRM updates.");
+  }
+
+  const agents = coerceWholeNumber(semanticSignals.agents_required);
+  if (agents === 0) {
+    invalidZeros.push("agents_required");
+  }
+  if (agents !== null && !isPositiveNumber(dealProperties.agents_required)) {
+    if (agents > 0) {
       updates.agents_required = String(agents);
     }
+  }
 
-    const ticketVolume = coerceWholeNumber(semanticSignals.ticket_volume_per_month);
-    if (ticketVolume && ticketVolume > 0 && !isPositiveNumber(dealProperties.ticket_volume_per_month)) {
+  const ticketVolume = coerceWholeNumber(semanticSignals.ticket_volume_per_month);
+  if (ticketVolume === 0) {
+    invalidZeros.push("ticket_volume_per_month");
+  }
+  if (ticketVolume !== null && !isPositiveNumber(dealProperties.ticket_volume_per_month)) {
+    if (ticketVolume > 0) {
       updates.ticket_volume_per_month = String(ticketVolume);
     }
+  }
 
-    const normalizedChannels = normalizeSupportChannels(semanticSignals.support_channels);
-    if (normalizedChannels.length > 0) {
-      const existingRaw = String(dealProperties.support_channels || "");
-      const existing = existingRaw
-        .split(";")
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean);
-      const merged = Array.from(new Set([...existing, ...normalizedChannels]));
-      updates.support_channels = merged.join("; ");
-    }
+  const rawChannels = Array.isArray(semanticSignals.support_channels)
+    ? semanticSignals.support_channels
+    : typeof semanticSignals.support_channels === "string"
+      ? [semanticSignals.support_channels]
+      : [];
+  const normalizedChannels = normalizeSupportChannels(rawChannels);
+  if (normalizedChannels.length > 0) {
+    const existingRaw = String(dealProperties.support_channels || "");
+    const existing = existingRaw
+      .split(";")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const merged = Array.from(new Set([...existing, ...normalizedChannels]));
+    updates.support_channels = merged.join("; ");
+  }
 
-    const primaryPain = sanitizeTextValue(semanticSignals.primary_pain);
-    if (primaryPain && !dealProperties.sw_primary_pain) {
-      updates.sw_primary_pain = primaryPain;
-    }
+  const primaryPain = sanitizeTextValue(semanticSignals.primary_pain);
+  if (primaryPain && !dealProperties.sw_primary_pain) {
+    updates.sw_primary_pain = primaryPain;
+  }
 
-    if (semanticSignals.key_challenges.length > 0) {
-      const existing = String(dealProperties.key_challenges || "").trim();
-      const existingParts = existing
-        .split(";")
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean);
-      const incoming = semanticSignals.key_challenges
-        .map((value) => sanitizeTextValue(value))
-        .filter((value): value is string => Boolean(value))
-        .map((value) => value.toLowerCase());
-      const merged = Array.from(new Set([...existingParts, ...incoming])).filter(Boolean);
-      updates.key_challenges = merged.join("; ");
-    }
+  const incomingChallenges = Array.isArray(semanticSignals.key_challenges)
+    ? semanticSignals.key_challenges
+    : typeof semanticSignals.key_challenges === "string"
+      ? [semanticSignals.key_challenges]
+      : [];
+  if (incomingChallenges.length > 0) {
+    const existing = String(dealProperties.key_challenges || "").trim();
+    const existingParts = existing
+      .split(";")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const incoming = incomingChallenges
+      .map((value) => sanitizeTextValue(value))
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    const merged = Array.from(new Set([...existingParts, ...incoming])).filter(Boolean);
+    updates.key_challenges = merged.join("; ");
+  }
 
-    const timelineMs = parseUtcDate(semanticSignals.timeline.date_utc);
-    if (timelineMs && !dealProperties.timeline_for_change) {
-      updates.timeline_for_change = String(timelineMs);
-    }
-  } else {
-    const agents = extractAgentsRequired(body);
-    if (agents && !isPositiveNumber(dealProperties.agents_required)) {
-      updates.agents_required = String(agents);
-    }
+  const timelineDate = semanticSignals.timeline_date_utc;
+  const timelineMs = parseUtcDate(timelineDate);
+  if (timelineMs && !dealProperties.timeline_for_change) {
+    updates.timeline_for_change = String(timelineMs);
+  }
 
-    const timeline = extractTimelineForChange(body);
-    if (timeline && !dealProperties.timeline_for_change) {
-      updates.timeline_for_change = String(timeline);
-    }
-
-    const primaryPain = extractPrimaryPain(body);
-    if (primaryPain && !dealProperties.sw_primary_pain) {
-      updates.sw_primary_pain = primaryPain;
-    }
-
-    const ticketVolume = extractTicketVolumePerMonth(body);
-    if (ticketVolume && !isPositiveNumber(dealProperties.ticket_volume_per_month)) {
-      updates.ticket_volume_per_month = String(ticketVolume);
-    }
-
-    const challenge = extractKeyChallenge(body);
-    if (challenge) {
-      const existing = String(dealProperties.key_challenges || "").trim();
-      if (!existing.toLowerCase().includes(challenge.toLowerCase())) {
-        updates.key_challenges = existing ? `${existing}; ${challenge}` : challenge;
-      }
-    }
+  if (invalidZeros.length > 0 && enforcementState) {
+    enforcementState.invalidInboundZeros = invalidZeros;
+    logVerbose(`[Agent] Inbound signal validation blocked zero values: ${invalidZeros.join(", ")}`);
   }
 
   if (Object.keys(updates).length === 0) return semanticSignals;
@@ -704,6 +379,14 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   const event = await resolveEvent(explicitEvent);
   const verbose = Boolean(event.verbose || process.env.VERBOSE_EVAL === "1");
   const disableResume = Boolean(event.disableResume || process.env.DISABLE_RESUME === "1");
+  const telemetryRunId = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const telemetryPath = resolve(process.cwd(), "data", "run-telemetry", `${telemetryRunId}.jsonl`);
+  const telemetry = createTelemetryLogger({
+    filePath: telemetryPath,
+    defaults: {
+      runId: telemetryRunId
+    }
+  });
 
   let contactId = event.contactId || null;
   let dealId = event.dealId || null;
@@ -718,6 +401,20 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       })()
     : null;
 
+  telemetry.log({
+    event_type: "agent_start",
+    payload: {
+      source: event.source,
+      type: event.type,
+      fromEmail: event.fromEmail,
+      fromName: event.fromName,
+      dealId: event.dealId,
+      contactId: event.contactId,
+      resumeOnly: event.resumeOnly,
+      verbose
+    }
+  });
+
   const logVerbose = (message: string) => {
     if (!verbose) return;
     const line = `${new Date().toISOString()} ${logPrefix}${message}`;
@@ -731,8 +428,16 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   if (event.source === "new_inbound" || event.source === "reply_to_existing") {
     if (event.fromEmail) {
       logVerbose(`[Agent] Pre-LLM start (${event.source})`);
+      telemetry.log({
+        event_type: "pre_llm_start",
+        payload: { source: event.source }
+      });
       const pre = await withTimeout(runPreLlm({ ...event, logEmail: true }), 30000, "runPreLlm");
       logVerbose(`[Agent] Pre-LLM complete`);
+      telemetry.log({
+        event_type: "pre_llm_complete",
+        payload: { contactId: pre.contactId, dealId: pre.dealId }
+      });
       contactId = pre.contactId;
       dealId = pre.dealId;
     }
@@ -750,13 +455,55 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   // Fetch full deal context
   logVerbose("[Agent] Fetch deal context");
   const dealContext = await withTimeout(fetchDealContext(dealId), 30000, "fetchDealContext");
+  telemetry.log({
+    event_type: "deal_context_fetched",
+    dealId,
+    payload: { dealStage: dealContext.dealStage }
+  });
+
+  const enforcementState = createEnforcementState(event.source);
 
   const inboundSignals = await applyInboundSignalUpdates({
     dealId,
     dealProperties: dealContext.properties || {},
     body: event.body,
-    logVerbose
+    logVerbose,
+    enforcementState
   });
+  telemetry.log({
+    event_type: "inbound_signals",
+    dealId,
+    payload: inboundSignals ? inboundSignals : { present: false }
+  });
+
+  if (event.source === "reply_to_existing" && inboundSignals?.no_response_needed) {
+    const reason = inboundSignals.no_response_reason || "Model classified acknowledgement-only reply.";
+    try {
+      await createDealNote(dealId, `No response needed. ${reason}`);
+    } catch (error: any) {
+      console.warn("[SalesAgent] Failed to log no-response note:", error?.message || error);
+      telemetry.log({
+        event_type: "no_response_note_error",
+        dealId,
+        payload: { error: error?.message || String(error) }
+      });
+    }
+    telemetry.log({
+      event_type: "no_response_needed",
+      dealId,
+      payload: { reason }
+    });
+
+    return {
+      success: true,
+      dealId,
+      contactId,
+      sessionId,
+      lastDraft: null,
+      noResponseNeeded: true,
+      noResponseReason: reason
+    };
+  }
 
   // Get existing session ID for resumption
   sessionId = dealContext.properties?.session_id || null;
@@ -788,9 +535,19 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         artifacts,
         event: { subject: eventContext.subject, body: eventContext.body }
       }), 120000, "deriveCommitmentState");
+      telemetry.log({
+        event_type: "commitment_derived",
+        dealId,
+        payload: derivedState as any
+      });
     }
   } catch (error) {
     console.warn("[SalesAgent] Derived commitment state failed:", error);
+    telemetry.log({
+      event_type: "commitment_derive_error",
+      dealId,
+      payload: { error: (error as any)?.message || String(error) }
+    });
   }
   if (!derivedState) {
     derivedState = {
@@ -805,15 +562,12 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   }
 
   if (!derivedState.fatigueSignals.present) {
-    if (inboundSignals?.fatigue?.present) {
-      derivedState.fatigueSignals = inboundSignals.fatigue;
-      logVerbose(`[Agent] Fatigue override applied (semantic): ${inboundSignals.fatigue.rationale}`);
-    } else if (eventContext.body) {
-      const fatigueOverride = inferFatigueFromText(eventContext.body);
-      if (fatigueOverride) {
-        derivedState.fatigueSignals = fatigueOverride;
-        logVerbose(`[Agent] Fatigue override applied (fallback): ${fatigueOverride.rationale}`);
-      }
+    if (inboundSignals?.fatigue_present) {
+      derivedState.fatigueSignals = {
+        present: inboundSignals.fatigue_present,
+        rationale: inboundSignals.fatigue_rationale || "Captured from inbound signals."
+      };
+      logVerbose(`[Agent] Fatigue override applied (semantic): ${derivedState.fatigueSignals.rationale}`);
     }
   }
 
@@ -825,8 +579,18 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       dealSummary: dealContext.dealSummary,
       event: { subject: eventContext.subject, body: eventContext.body }
     }), 120000, "deriveNextActionPolicy");
+    telemetry.log({
+      event_type: "next_action_policy",
+      dealId,
+      payload: nextActionPolicy as any
+    });
   } catch (error) {
     console.warn("[SalesAgent] Next action policy failed:", error);
+    telemetry.log({
+      event_type: "next_action_policy_error",
+      dealId,
+      payload: { error: (error as any)?.message || String(error) }
+    });
     nextActionPolicy = {
       mustAnswer: "Address the prospect's latest question or intent directly.",
       nextCommitment: derivedState.commitmentCurrent,
@@ -843,9 +607,11 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     artifacts
   });
   dealContext.progressionGap = commitmentGap;
+  enforcementState.progressionGap = commitmentGap;
 
-  const pricingSignal = derivedState.pricingIntent !== "none" ||
-    /price|pricing|cost|budget|quote|invoice/i.test(`${eventContext.subject || ""} ${eventContext.body || ""}`);
+  const pricingSignal =
+    derivedState.pricingIntent !== "none" ||
+    (inboundSignals?.pricing_intent && inboundSignals.pricing_intent !== "none");
 
   let pricingCatalogSummary = "";
   if (pricingSignal) {
@@ -933,7 +699,7 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
   };
 
   const normalizeSdkStatus = (value: any): SdkTaskStatus | null => {
-    if (value === "pending" || value === "in_progress" || value === "completed") return value;
+    if (value === "pending" || value === "in_progress" || value === "completed" || value === "deleted") return value;
     return null;
   };
 
@@ -941,9 +707,8 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     taskLifecycle.push(entry);
   };
 
-  // Create enforcement state to ensure email responses are sent
-  const enforcementState = createEnforcementState(event.source);
-  enforcementState.pricingIntent = derivedState.pricingIntent;
+  // Configure enforcement state to ensure email responses are sent
+  enforcementState.pricingIntent = inboundSignals?.pricing_intent ?? derivedState.pricingIntent;
   enforcementState.buyerIntent = derivedState.buyerIntent;
   enforcementState.recentAsks = derivedState.recentAsks;
   enforcementState.askStyle = nextActionPolicy.askStyle;
@@ -963,10 +728,22 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     onToolCall: (tool, input) => {
       toolCalls.push({ tool, input, timestamp: new Date().toISOString() });
       logVerbose(`[Agent] Tool call: ${tool}${input ? ` ${JSON.stringify(input)}` : ""}`);
+      telemetry.log({
+        event_type: "tool_call",
+        dealId,
+        sessionId,
+        payload: { tool, input }
+      });
     },
     onToolResult: (tool, result, success, toolInput) => {
       toolResults.push({ tool, success, timestamp: new Date().toISOString() });
       logVerbose(`[Agent] Tool result: ${tool} success=${success}`);
+      telemetry.log({
+        event_type: "tool_result",
+        dealId,
+        sessionId,
+        payload: { tool, success, result, toolInput }
+      });
       if (!success) return;
 
       if (tool === "TaskCreate") {
@@ -1000,6 +777,42 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         const statusFrom = result?.statusChange?.from ?? taskCache.get(taskId)?.status ?? null;
         if (statusTo) {
           updateTaskCache(taskId, { status: statusTo });
+        }
+
+        if (statusTo === "deleted") {
+          const { subject, description } = resolveTaskSummary(taskId);
+          const summaryText = subject || `Task ${taskId}`;
+          const lifecycleEntry: TaskLifecycleSummary = {
+            taskId,
+            subject,
+            statusFrom: statusFrom ? String(statusFrom) : null,
+            statusTo,
+            timestamp: new Date().toISOString()
+          };
+
+          captureTaskLifecycle(lifecycleEntry);
+
+          const mirrorJob = mirrorSdkTaskToHubSpot({
+            dealId,
+            sdkTaskId: taskId,
+            sdkStatus: statusTo,
+            summary: summaryText,
+            description
+          })
+            .then((mirrorResult) => {
+              lifecycleEntry.hubspotTaskId = mirrorResult.hubspotTaskId ?? null;
+              lifecycleEntry.hubspotStatus = mirrorResult.hubspotStatus ?? null;
+              lifecycleEntry.hubspotAction = mirrorResult.action;
+              lifecycleEntry.error = mirrorResult.error ?? null;
+            })
+            .catch((error: any) => {
+              lifecycleEntry.hubspotAction = "skipped";
+              lifecycleEntry.error = error?.message || String(error);
+            });
+
+          mirrorJobs.push(mirrorJob);
+          taskCache.delete(taskId);
+          return;
         }
 
         if (statusTo === "in_progress" || statusTo === "completed") {
@@ -1039,24 +852,60 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     },
     onToolFailure: (tool, error, toolInput, toolUseId, isInterrupt) => {
       logVerbose(`[Agent] Tool failure: ${tool} ${isInterrupt ? "(interrupt)" : ""} ${error}`);
+      telemetry.log({
+        event_type: "tool_failure",
+        dealId,
+        sessionId,
+        payload: { tool, error, toolInput, toolUseId, isInterrupt }
+      });
     },
     onEmailDraft: (draft) => {
       lastDraftRef.current = draft;
       logVerbose(`[Agent] Draft logged: "${draft.subject}" (${draft.body.length} chars)`);
+      telemetry.log({
+        event_type: "email_draft",
+        dealId,
+        sessionId,
+        payload: { subject: draft.subject, body: draft.body, emailId: draft.emailId }
+      });
     },
     onContractSent: (payload) => {
       contractSentSignal = payload;
       logVerbose(`[Agent] Contract sent: invoiceId=${payload.invoiceId}`);
+      telemetry.log({
+        event_type: "contract_sent",
+        dealId,
+        sessionId,
+        payload
+      });
     },
     onStop: (reason) => {
       stopObserved = true;
       logVerbose(`[SalesAgent] Stopped: ${reason}`);
+      telemetry.log({
+        event_type: "agent_stop",
+        dealId,
+        sessionId,
+        payload: { reason }
+      });
     },
     onToolDecision: (toolName, decision, reason) => {
       logVerbose(`[Agent] Tool decision: ${toolName} -> ${decision}${reason ? ` (${reason})` : ""}`);
+      telemetry.log({
+        event_type: "tool_decision",
+        dealId,
+        sessionId,
+        payload: { toolName, decision, reason }
+      });
     },
     onNotification: (message, title) => {
       logVerbose(`[Agent] Notification${title ? `: ${title}` : ""} ${message}`);
+      telemetry.log({
+        event_type: "notification",
+        dealId,
+        sessionId,
+        payload: { message, title }
+      });
     },
     enforcementState,
     additionalContext: commitmentContext
@@ -1080,6 +929,9 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
 
   try {
     const queryEnv = getClaudeEnv();
+    if (!queryEnv.CLAUDE_CODE_ENABLE_TASKS) {
+      queryEnv.CLAUDE_CODE_ENABLE_TASKS = "true";
+    }
     if (taskListId && !queryEnv.CLAUDE_CODE_TASK_LIST_ID) {
       queryEnv.CLAUDE_CODE_TASK_LIST_ID = taskListId;
     }
@@ -1115,6 +967,45 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     let judgeSummary: any = null;
     let executionSummary: any = null;
     let toolUsage: any = null;
+    let streamBlockType: string | null = null;
+    let streamTextChars = 0;
+    let streamThinkingChars = 0;
+    let streamDeltaCount = 0;
+    let streamFirstTextSample: string | null = null;
+    let streamLastTextSample: string | null = null;
+
+    const flushStreamSummary = (reason: string) => {
+      if (!streamBlockType) return;
+      const summary = {
+        blockType: streamBlockType,
+        deltas: streamDeltaCount,
+        textChars: streamTextChars,
+        thinkingChars: streamThinkingChars,
+        reason
+      };
+      logVerbose(
+        `[Agent] Stream block stop: ${summary.blockType} (deltas=${summary.deltas}, textChars=${summary.textChars}, thinkingChars=${summary.thinkingChars})`
+      );
+      if (streamFirstTextSample) {
+        logVerbose(`[Agent] Stream text sample (first): ${streamFirstTextSample}`);
+      }
+      if (streamLastTextSample && streamLastTextSample !== streamFirstTextSample) {
+        logVerbose(`[Agent] Stream text sample (last): ${streamLastTextSample}`);
+      }
+      telemetry.log({
+        event_type: "stream_block_summary",
+        dealId,
+        sessionId: resultSessionId,
+        payload: summary
+      });
+
+      streamBlockType = null;
+      streamTextChars = 0;
+      streamThinkingChars = 0;
+      streamDeltaCount = 0;
+      streamFirstTextSample = null;
+      streamLastTextSample = null;
+    };
 
     logVerbose("[Agent] Query loop start");
     for await (const message of query({
@@ -1125,6 +1016,12 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
       if (message.type === "system" && message.subtype === "init") {
         resultSessionId = message.session_id || resultSessionId;
         logVerbose(`[Agent] Session init: ${resultSessionId}`);
+        telemetry.log({
+          event_type: "session_init",
+          dealId,
+          sessionId: resultSessionId,
+          payload: { sessionId: resultSessionId }
+        });
       }
 
       if (message.type === "summary") {
@@ -1132,18 +1029,42 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         if (m.subtype === "plan") {
           planSummary = buildPlanSummary(m.summary);
           logVerbose(`[Agent] Plan summary: ${JSON.stringify(planSummary)}`);
+          telemetry.log({
+            event_type: "summary_plan",
+            dealId,
+            sessionId: resultSessionId,
+            payload: planSummary
+          });
         }
         if (m.subtype === "judge") {
           judgeSummary = buildJudgeSummary(m.summary);
           logVerbose(`[Agent] Judge summary: ${JSON.stringify(judgeSummary)}`);
+          telemetry.log({
+            event_type: "summary_judge",
+            dealId,
+            sessionId: resultSessionId,
+            payload: judgeSummary
+          });
         }
         if (m.subtype === "execution") {
           executionSummary = buildExecutionSummary(m.summary);
           logVerbose(`[Agent] Execution summary: ${JSON.stringify(executionSummary)}`);
+          telemetry.log({
+            event_type: "summary_execution",
+            dealId,
+            sessionId: resultSessionId,
+            payload: executionSummary
+          });
         }
         if (m.subtype === "tool_usage") {
           toolUsage = m.summary;
           logVerbose(`[Agent] Tool usage summary: ${JSON.stringify(toolUsage)}`);
+          telemetry.log({
+            event_type: "summary_tool_usage",
+            dealId,
+            sessionId: resultSessionId,
+            payload: toolUsage
+          });
         }
       }
 
@@ -1156,6 +1077,12 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
           .join("")
           .trim();
         if (text) logVerbose(`[Agent] Assistant: ${text.slice(0, 500)}`);
+        telemetry.log({
+          event_type: "assistant_message",
+          dealId,
+          sessionId: resultSessionId,
+          payload: { text, length: text.length }
+        });
       }
 
       if (message.type === "stream_event" && verbose) {
@@ -1163,35 +1090,69 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         const eventType = event?.type || "unknown";
         if (eventType === "content_block_start") {
           const blockType = event?.content_block?.type || "unknown";
+          flushStreamSummary("new_block_start");
+          streamBlockType = blockType;
           logVerbose(`[Agent] Stream block start: ${blockType}`);
+          telemetry.log({
+            event_type: "stream_block_start",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { blockType }
+          });
         } else if (eventType === "content_block_delta") {
           const delta = event?.delta;
+          streamDeltaCount += 1;
+          if (!streamBlockType) streamBlockType = "unknown";
           if ((delta?.type === "text" || delta?.type === "text_delta") && typeof delta?.text === "string") {
-            logVerbose(`[Agent] Stream text delta: ${delta.text.slice(0, 300)}`);
+            streamTextChars += delta.text.length;
+            if (!streamFirstTextSample) streamFirstTextSample = delta.text.slice(0, 160);
+            streamLastTextSample = delta.text.slice(0, 160);
           } else if ((delta?.type === "thinking" || delta?.type === "thinking_delta") && typeof delta?.thinking === "string") {
-            logVerbose(`[Agent] Stream thinking delta (${delta.thinking.length} chars)`);
-          } else {
-            logVerbose(`[Agent] Stream delta: ${JSON.stringify(delta).slice(0, 300)}`);
+            streamThinkingChars += delta.thinking.length;
           }
         } else if (eventType === "content_block_stop") {
-          logVerbose("[Agent] Stream block stop");
+          flushStreamSummary("block_stop");
         } else {
           logVerbose(`[Agent] Stream event: ${eventType}`);
+          telemetry.log({
+            event_type: "stream_event",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { eventType }
+          });
         }
       }
 
       // Check for result
       if (message.type === "result") {
+        flushStreamSummary("result");
         if (verbose) {
           logVerbose(`[Agent] Result: ${message.subtype}`);
         }
         if (message.subtype === "success") {
           // Agent completed successfully
           successResult = true;
+          telemetry.log({
+            event_type: "result_success",
+            dealId,
+            sessionId: resultSessionId
+          });
         } else if (message.subtype === "error_max_turns") {
           agentError = "Agent reached maximum turns";
+          telemetry.log({
+            event_type: "result_error",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { error: agentError }
+          });
         } else if (message.errors && message.errors.length > 0) {
           agentError = message.errors.join("; ");
+          telemetry.log({
+            event_type: "result_error",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { error: agentError }
+          });
         }
       }
 
@@ -1201,12 +1162,19 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
           console.log("[SalesAgent] Terminal stage reached: contractsent");
         } catch (error: any) {
           console.error("[SalesAgent] Failed to mark contractsent:", error.message || error);
+          telemetry.log({
+            event_type: "terminal_stage_error",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { error: error?.message || String(error) }
+          });
         }
         terminalAbort = true;
         successResult = true;
         controller.abort();
       }
     }
+    logVerbose("[Agent] Query loop end");
 
     if (mirrorJobs.length > 0) {
       try {
@@ -1241,6 +1209,12 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     if (requiresEmail && !enforcementState.emailLogged) {
       agentError = "Agent stopped without logging an email draft";
       successResult = false;
+      telemetry.log({
+        event_type: "agent_error",
+        dealId,
+        sessionId: resultSessionId,
+        payload: { error: agentError }
+      });
     }
 
     // Log Run Note
@@ -1259,9 +1233,15 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         systemPromptAppend: systemPrompt
       });
       appendRunNote(note);
-    } catch (e) {
-      console.error("[SalesAgent] Failed to create run note:", e);
-    }
+      } catch (e) {
+        console.error("[SalesAgent] Failed to create run note:", e);
+        telemetry.log({
+          event_type: "run_note_error",
+          dealId,
+          sessionId: resultSessionId,
+          payload: { error: (e as any)?.message || String(e) }
+        });
+      }
 
     let updatedSummary: any = null;
 
@@ -1279,6 +1259,12 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
         console.log("[SalesAgent] Deal summary refreshed");
       } catch (e) {
         console.error("[SalesAgent] Failed to refresh deal summary:", e);
+        telemetry.log({
+          event_type: "summary_refresh_error",
+          dealId,
+          sessionId: resultSessionId,
+          payload: { error: (e as any)?.message || String(e) }
+        });
       }
     } else if (!successResult) {
       console.log("[SalesAgent] Deal summary refresh skipped (unsuccessful run)");
@@ -1326,11 +1312,29 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
 
         if (stageAdvance.blockedReason) {
           console.log(`[SalesAgent] Stage advance blocked: ${stageAdvance.blockedReason}`);
+          telemetry.log({
+            event_type: "stage_advance_blocked",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { reason: stageAdvance.blockedReason }
+          });
         } else if (stageAdvance.advanced) {
           console.log(`[SalesAgent] Stage advanced: ${stageAdvance.from?.name} -> ${stageAdvance.to?.name}`);
+          telemetry.log({
+            event_type: "stage_advanced",
+            dealId,
+            sessionId: resultSessionId,
+            payload: { from: stageAdvance.from, to: stageAdvance.to }
+          });
         }
       } catch (e) {
         console.error("[SalesAgent] Commitment stage advance failed:", e);
+        telemetry.log({
+          event_type: "stage_advance_error",
+          dealId,
+          sessionId: resultSessionId,
+          payload: { error: (e as any)?.message || String(e) }
+        });
       }
     }
   } catch (error: any) {
@@ -1341,11 +1345,26 @@ export async function runSalesAgent(explicitEvent?: AgentEvent): Promise<AgentRe
     } else {
       agentError = error.message || "Unknown error";
     }
+    if (agentError) {
+      telemetry.log({
+        event_type: "agent_error",
+        dealId,
+        sessionId: resultSessionId,
+        payload: { error: agentError }
+      });
+    }
   } finally {
     clearTimeout(timeout);
     if (traceStream) {
       traceStream.end();
     }
+    telemetry.log({
+      event_type: "agent_end",
+      dealId,
+      sessionId: resultSessionId,
+      payload: { success: !agentError, error: agentError || null }
+    });
+    telemetry.flushAndClose();
   }
 
   // Persist session ID

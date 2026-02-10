@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-30T00:13:13.833Z","runId":"1769731993833-969864","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"fatima.okonkwo-97fe3713-0@eval-679847.com","fromName":"Fatima Okonkwo","verbose":true}}
+{"timestamp":"2026-01-30T00:13:13.834Z","runId":"1769731993833-969864","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T00:13:16.534Z","runId":"1769731993833-969864","event_type":"pre_llm_complete","payload":{"contactId":"285491842512","dealId":"235155101175"}}
+{"timestamp":"2026-01-30T00:13:17.810Z","runId":"1769731993833-969864","event_type":"deal_context_fetched","dealId":"235155101175","payload":{"dealStage":"2130118129"}}

@@ -20,6 +20,7 @@ import { evaluateRun } from "../src/eval/evaluator";
 import { cleanupEvalRun } from "../src/eval/cleanup";
 import { hubspotRequest } from "../src/lib/hubspot";
 import { getClaudeCodePath } from "../src/runtime/claude";
+import { createTelemetryLogger } from "../src/runtime/telemetry";
 import {
   saveEvalRunConfig,
   saveConversationResult,
@@ -189,11 +190,20 @@ async function executeConversations(
   maxTurns: number
 ): Promise<string> {
   const runId = randomUUID().slice(0, 8);
+  const telemetryPath = join(process.cwd(), "data", "eval-runs", runId, "telemetry.jsonl");
+  const telemetry = createTelemetryLogger({
+    filePath: telemetryPath,
+    defaults: { runId }
+  });
   console.log(`\n=== Starting Eval Run: ${runId} ===\n`);
   console.log(`Conversations: ${count}`);
   console.log(`Concurrency: ${concurrency}`);
   console.log(`Persona Set: ${personaSet}`);
   console.log("");
+  telemetry.log({
+    event_type: "eval_run_start",
+    payload: { count, concurrency, personaSet, maxTurns, verbose }
+  });
 
   // Load persona config
   const personaConfig = loadPersonaConfig(personaSet);
@@ -212,10 +222,15 @@ async function executeConversations(
   const preflight = await runPreflight();
   if (!preflight.ok) {
     console.error(`Preflight failed: ${preflight.error}`);
+    telemetry.log({
+      event_type: "preflight_failed",
+      payload: { error: preflight.error }
+    });
     const summary = generateEvalRunSummary(runId, { preflightError: preflight.error });
     if (summary) {
       saveEvalRunSummary(summary);
     }
+    telemetry.flushAndClose();
     return runId;
   }
 
@@ -244,6 +259,10 @@ async function executeConversations(
   const tasks = personas.map((persona, index) =>
     limit(async () => {
       try {
+        telemetry.log({
+          event_type: "conversation_start",
+          payload: { index, personaId: persona.id, personaName: persona.name }
+        });
         const result = await runConversation(persona, {
           runId,
           conversationIndex: index,
@@ -254,12 +273,20 @@ async function executeConversations(
 
         // Save result immediately
         saveConversationResult(result);
+        telemetry.log({
+          event_type: "conversation_complete",
+          payload: { index, outcome: result.outcome, endReason: result.endReason, error: result.error || null }
+        });
 
         return result;
       } catch (error: any) {
         console.error(`[Conv ${index}] Failed: ${error.message || error}`);
         const failure = buildFailureResult(runId, index, persona, error);
         saveConversationResult(failure);
+        telemetry.log({
+          event_type: "conversation_error",
+          payload: { index, error: error?.message || String(error) }
+        });
         return failure;
       }
     })
@@ -273,6 +300,10 @@ async function executeConversations(
   console.log(`Successful: ${successCount}/${count}`);
   console.log(`Duration: ${(duration / 1000).toFixed(1)}s`);
   console.log(`Run ID: ${runId}`);
+  telemetry.log({
+    event_type: "eval_run_complete",
+    payload: { successCount, count, durationMs: duration }
+  });
 
   // Generate and save summary
   const summary = generateEvalRunSummary(runId);
@@ -299,6 +330,7 @@ async function executeConversations(
   console.log(`\nNext steps:`);
   console.log(`  Evaluate: bun eval:score -- --run-id ${runId}`);
   console.log(`  Cleanup:  bun eval:cleanup -- --run-id ${runId}`);
+  telemetry.flushAndClose();
 
   return runId;
 }

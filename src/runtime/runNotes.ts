@@ -35,7 +35,7 @@ export type TaskLifecycleSummary = {
   timestamp: string;
   hubspotTaskId?: string | null;
   hubspotStatus?: string | null;
-  hubspotAction?: "created" | "updated" | "skipped";
+  hubspotAction?: "created" | "updated" | "deleted" | "skipped";
   error?: string | null;
 };
 

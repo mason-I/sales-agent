@@ -15,6 +15,22 @@ try {
 }
 const ALLOWED_SKUS = new Set((PRODUCT_CATALOG.products || []).map((p) => p.sku));
 
+function normalizeSku(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function resolveSku(input: string) {
+  if (ALLOWED_SKUS.has(input)) return input;
+  const normalized = normalizeSku(input);
+  for (const sku of ALLOWED_SKUS) {
+    const candidate = normalizeSku(sku);
+    if (candidate === normalized || candidate.endsWith(normalized)) {
+      return sku;
+    }
+  }
+  return null;
+}
+
 function asNonEmptyTuple<T extends string>(values: T[], label: string): [T, ...T[]] {
   if (values.length === 0) {
     throw new Error(`${label} must include at least one value`);
@@ -103,71 +119,49 @@ async function addLineItemsToDeal(dealId: string, lineItemIds: string[]) {
 }
 
 async function createInvoice(dealId: string, lineItemIds: string[], currency: string) {
+  // Step 1: Create invoice in draft status (no associations at creation)
   const properties = {
     hs_currency: currency || "USD",
-    hs_invoice_status: "open"  // Auto-send - immediately payable, no human review
+    hs_invoice_status: "draft"
   };
 
-  const associations = lineItemIds.map((id) => ({
-    to: { id },
-    types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 136 }]
-  }));
+  const invoice = await hubspotRequest<any>("POST", "/crm/v3/objects/invoices", { properties });
+  const invoiceId = invoice?.id;
+  if (!invoiceId) {
+    throw new Error("Invoice creation failed - no ID returned");
+  }
 
-  associations.push({
-    to: { id: dealId },
-    types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 382 }]
+  // Step 2: Use batch associations API for line items
+  await hubspotRequest("POST", "/crm/v3/associations/line_item/invoice/batch/create", {
+    inputs: lineItemIds.map((lineItemId) => ({
+      from: { id: lineItemId },
+      to: { id: invoiceId },
+      type: "line_item_to_invoice"
+    }))
   });
 
-  return await hubspotRequest<any>("POST", "/crm/v3/objects/invoices", { properties, associations });
-}
+  // Step 3: Use batch associations API for deal
+  await hubspotRequest("POST", "/crm/v3/associations/deal/invoice/batch/create", {
+    inputs: [{
+      from: { id: dealId },
+      to: { id: invoiceId },
+      type: "deal_to_invoice"
+    }]
+  });
 
-function validateEmailContent(body: string, subject: string) {
-  const violations: Array<{ policy: string; message: string }> = [];
+  // Step 4: Update invoice to 'open' status to make it payable
+  const updated = await hubspotRequest<any>("PATCH", `/crm/v3/objects/invoices/${invoiceId}`, {
+    properties: { hs_invoice_status: "open" }
+  });
 
-  if (body && body.length < 50) {
-    violations.push({ policy: "MIN_LENGTH", message: "Email body is too short (minimum 50 characters)" });
-  }
-
-  if (body && body.length > 5000) {
-    violations.push({ policy: "MAX_LENGTH", message: "Email body exceeds maximum length (5000 characters)" });
-  }
-
-  if (!subject || subject.trim().length === 0) {
-    violations.push({ policy: "SUBJECT_REQUIRED", message: "Email subject line is empty" });
-  }
-
-  const unprofessionalPatterns = [
-    { pattern: /\b(damn|crap|hell)\b/i, message: "Contains mildly unprofessional language" },
-    { pattern: /\b(stupid|idiot|dumb)\b/i, message: "Contains potentially offensive language" },
-    { pattern: /!!+/g, message: "Contains excessive exclamation marks" },
-    { pattern: /\?\?+/g, message: "Contains excessive question marks" },
-    { pattern: /[A-Z]{10,}/g, message: "Contains excessive capitalization" }
-  ];
-
-  for (const { pattern, message } of unprofessionalPatterns) {
-    if (pattern.test(body || "") || pattern.test(subject || "")) {
-      violations.push({ policy: "PROFESSIONALISM", message });
+  // Return the invoice with the URL
+  return {
+    ...invoice,
+    properties: {
+      ...invoice.properties,
+      ...updated.properties
     }
-  }
-
-  const placeholderPatterns = [/\[INSERT .+?\]/i, /\{.+?\}/, /TODO:/i, /FIXME:/i, /XXX/];
-  for (const pattern of placeholderPatterns) {
-    if (pattern.test(body || "") || pattern.test(subject || "")) {
-      violations.push({ policy: "PLACEHOLDER", message: "Contains placeholder text" });
-    }
-  }
-
-  return violations;
-}
-
-function findAsyncOnlyViolations(text: string) {
-  const patterns = [
-    /\b(book|schedule|set up|arrange)\b.*\b(call|meeting|demo)\b/i,
-    /\b(calendar|calendly|invite|meeting link|timeslot|time slots)\b/i,
-    /\bzoom\b/i,
-    /\bgoogle meet\b/i
-  ];
-  return patterns.some((p) => p.test(text));
+  };
 }
 
 const ZENDESK_KB_DOMAINS = ["support.zendesk.com", "zendesk.com", "www.zendesk.com"];
@@ -320,12 +314,9 @@ export function createSalesMcpServer() {
           const questionLines = normalizedQuestions.map((q, i) => `${i + 1}) ${q}`).join("\n");
 
           let body = [intro, questionLines, closing].filter(Boolean).join("\n\n");
-          if (!/zendesk/i.test(body)) {
+          if (!body.toLowerCase().includes("zendesk")) {
             body = `${body}\n\nZendesk`;
           }
-
-          const violations = validateEmailContent(body, subject);
-          if (violations.length > 0) warnings.push(...violations);
 
           // Note: Async-only policy is handled by hooks with auto-correction.
           // We only add a warning here for observability, not blocking.
@@ -386,28 +377,54 @@ export function createSalesMcpServer() {
         async ({ dealId, items }) => {
           try {
             const created: Array<{ sku: string; lineItemId?: string; ok: boolean; error?: string }> = [];
+            let totalAmount = 0;
             for (const item of items) {
-              if (!ALLOWED_SKUS.has(item.sku)) {
+              const resolvedSku = resolveSku(item.sku);
+              if (!resolvedSku) {
                 created.push({ sku: item.sku, ok: false, error: "SKU not in allowlist" });
                 continue;
               }
-              const product = await findProductBySku(item.sku);
+              const product = await findProductBySku(resolvedSku);
               if (!product) {
-                created.push({ sku: item.sku, ok: false, error: "SKU not found in HubSpot catalog" });
+                created.push({ sku: resolvedSku, ok: false, error: "SKU not found in HubSpot catalog" });
                 continue;
               }
-              const lineItem = await createLineItemFromProduct(product, item);
+              const lineItem = await createLineItemFromProduct(product, { ...item, sku: resolvedSku });
               if (lineItem?.id) {
-                created.push({ sku: item.sku, lineItemId: lineItem.id, ok: true });
+                created.push({ sku: resolvedSku, lineItemId: lineItem.id, ok: true });
+                const priceValue = Number(product?.properties?.price);
+                const quantityValue = Number(item.quantity || 1);
+                if (!Number.isNaN(priceValue) && !Number.isNaN(quantityValue)) {
+                  totalAmount += priceValue * quantityValue;
+                }
               } else {
-                created.push({ sku: item.sku, ok: false, error: "Line item creation failed" });
+                created.push({ sku: resolvedSku, ok: false, error: "Line item creation failed" });
               }
             }
 
             const lineItemIds = created.filter((c) => c.ok && c.lineItemId).map((c) => c.lineItemId as string);
             const associations = lineItemIds.length > 0 ? await addLineItemsToDeal(dealId, lineItemIds) : [];
 
-            return { content: [{ type: "text", text: JSON.stringify({ ok: true, data: { created, associations } }) }] };
+            let amountUpdated = false;
+            if (totalAmount > 0) {
+              try {
+                await hubspotRequest("PATCH", `/crm/v3/objects/deals/${dealId}`, {
+                  properties: { amount: String(Math.round(totalAmount * 100) / 100) }
+                });
+                amountUpdated = true;
+              } catch {
+                amountUpdated = false;
+              }
+            }
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({ ok: true, data: { created, associations, amountUpdated, amount: totalAmount } })
+                }
+              ]
+            };
           } catch (error: any) {
             return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: error.message }) }] };
           }

@@ -1,0 +1,5 @@
+{"timestamp":"2026-01-30T03:28:01.050Z","runId":"1769743681049-385417","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"amara.okafor-18f649aa-0@eval-417084.com","fromName":"Amara Okafor","verbose":true}}
+{"timestamp":"2026-01-30T03:28:01.050Z","runId":"1769743681049-385417","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-30T03:28:03.684Z","runId":"1769743681049-385417","event_type":"pre_llm_complete","payload":{"contactId":"285879517688","dealId":"235044828663"}}
+{"timestamp":"2026-01-30T03:28:05.102Z","runId":"1769743681049-385417","event_type":"deal_context_fetched","dealId":"235044828663","payload":{"dealStage":"2130118129"}}
+{"timestamp":"2026-01-30T03:28:18.963Z","runId":"1769743681049-385417","event_type":"inbound_signals","dealId":"235044828663","payload":{"agents_required":"null","ticket_volume_per_month":null,"support_channels":[],"primary_pain":"support challenges","key_challenges":[],"timeline":null,"fatigue":null,"no_response_needed":false,"no_response_reason":null}}

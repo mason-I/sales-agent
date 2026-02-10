@@ -24,9 +24,9 @@ const JUDGE_ITEM = {
   type: "object",
   additionalProperties: false,
   properties: {
-    code: { type: "string", minLength: 1, maxLength: 64 },
-    message: { type: "string", minLength: 1, maxLength: 500 },
-    order: { anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] }
+    code: { type: "string" },
+    message: { type: "string" },
+    order: { anyOf: [{ type: "integer" }, { type: "null" }] }
   },
   required: ["code", "message", "order"]
 };
@@ -36,7 +36,7 @@ export const PLAN_JUDGE_SCHEMA = {
   additionalProperties: false,
   properties: {
     pass: { type: "boolean" },
-    score: { type: "integer", minimum: 0, maximum: 100 },
+    score: { type: "integer" },
     recommendedIntent: {
       anyOf: [
         {
@@ -54,7 +54,7 @@ export const PLAN_JUDGE_SCHEMA = {
         { type: "null" }
       ]
     },
-    recommendedGoal: { anyOf: [{ type: "string", maxLength: 300 }, { type: "null" }] },
+    recommendedGoal: { anyOf: [{ type: "string" }, { type: "null" }] },
     violations: { type: "array", items: JUDGE_ITEM },
     suggestions: { type: "array", items: JUDGE_ITEM }
   },
@@ -178,7 +178,7 @@ export const DEAD_OPP_EVAL_SCHEMA = {
         "unknown"
       ]
     },
-    reasonSummary: { type: "string", minLength: 1, maxLength: 500 },
+    reasonSummary: { type: "string" },
     featureGap: {
       type: "object",
       additionalProperties: false,
@@ -245,7 +245,7 @@ export const DERIVED_STATE_SCHEMA = {
         additionalProperties: false,
         properties: {
           commitment: { type: "string", enum: COMMITMENT_ENUM },
-          evidence: { type: "string", minLength: 1, maxLength: 500 }
+          evidence: { type: "string" }
         },
         required: ["commitment", "evidence"]
       }
@@ -260,7 +260,7 @@ export const DERIVED_STATE_SCHEMA = {
       additionalProperties: false,
       properties: {
         present: { type: "boolean" },
-        rationale: { type: "string", minLength: 1, maxLength: 500 }
+        rationale: { type: "string" }
       },
       required: ["present", "rationale"]
     },
@@ -282,9 +282,9 @@ export const NEXT_ACTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    mustAnswer: { type: "string", minLength: 1, maxLength: 600 },
+    mustAnswer: { type: "string" },
     nextCommitment: { type: "string", enum: COMMITMENT_ENUM },
-    minimalAsk: { type: "string", minLength: 1, maxLength: 300 },
+    minimalAsk: { type: "string" },
     askStyle: { type: "string", enum: ["question", "cta", "nurture", "close"] },
     avoidTopics: { type: "array", items: { type: "string" } },
     pricingDirective: {
@@ -293,7 +293,7 @@ export const NEXT_ACTION_SCHEMA = {
       properties: {
         required: { type: "boolean" },
         skus: { type: "array", items: { type: "string" } },
-        notes: { anyOf: [{ type: "string", maxLength: 300 }, { type: "null" }] }
+        notes: { anyOf: [{ type: "string" }, { type: "null" }] }
       },
       required: ["required", "skus", "notes"]
     }
@@ -306,11 +306,36 @@ export const DRAFT_EVIDENCE_SCHEMA = {
   additionalProperties: false,
   properties: {
     pricingIncluded: { type: "boolean" },
-    pricingEvidence: { anyOf: [{ type: "string", maxLength: 200 }, { type: "null" }] },
+    pricingEvidence: { anyOf: [{ type: "string" }, { type: "null" }] },
     invoiceLinkIncluded: { type: "boolean" },
-    invoiceEvidence: { anyOf: [{ type: "string", maxLength: 200 }, { type: "null" }] }
+    invoiceEvidence: { anyOf: [{ type: "string" }, { type: "null" }] }
   },
   required: ["pricingIncluded", "pricingEvidence", "invoiceLinkIncluded", "invoiceEvidence"]
+} as const;
+
+export const DRAFT_QUALITY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    requires_change: { type: "boolean" },
+    policy_violations: { type: "array", items: { type: "string" } },
+    has_cta: { type: "boolean" },
+    has_question: { type: "boolean" },
+    mentions_timeline_question: { type: "boolean" },
+    has_async_violation: { type: "boolean" },
+    has_placeholder: { type: "boolean" },
+    rationale: { anyOf: [{ type: "string" }, { type: "null" }] }
+  },
+  required: [
+    "requires_change",
+    "policy_violations",
+    "has_cta",
+    "has_question",
+    "mentions_timeline_question",
+    "has_async_violation",
+    "has_placeholder",
+    "rationale"
+  ]
 } as const;
 
 export const RUN_NOTE_INSIGHTS_SCHEMA = {
@@ -323,4 +348,30 @@ export const RUN_NOTE_INSIGHTS_SCHEMA = {
     harnessSuggestions: { type: "array", items: { type: "string" } }
   },
   required: ["whatWorked", "whatDidnt", "missingContext", "harnessSuggestions"]
+} as const;
+
+export const INBOUND_SIGNAL_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    agents_required: { type: ["number", "null"] },
+    ticket_volume_per_month: { type: ["number", "null"] },
+    support_channels: { type: "array", items: { type: "string" } },
+    primary_pain: { type: "string" },
+    key_challenges: { type: "array", items: { type: "string" } },
+    timeline_date_utc: { type: "string" },
+    timeline_urgency: { type: "string", enum: ["high", "medium", "low", "unknown"] },
+    timeline_rationale: { type: "string" },
+    fatigue_present: { type: "boolean" },
+    fatigue_rationale: { type: "string" },
+    pricing_intent: { type: "string", enum: ["explicit", "implied", "none"] },
+    no_response_needed: { type: "boolean" },
+    no_response_reason: { type: "string" }
+  },
+  required: [
+    "timeline_urgency",
+    "fatigue_present",
+    "pricing_intent",
+    "no_response_needed"
+  ]
 } as const;

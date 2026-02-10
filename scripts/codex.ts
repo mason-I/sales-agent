@@ -157,8 +157,11 @@ async function main() {
     }
   }
 
+  const defaultPrompt =
+    'Evaluate "AGENTS SDK Docs/Agents SDK Changelog.md" and "AGENTS SDK Docs/Claude Code CHANGELOG.md". We updated @anthropic-ai/claude-agent-sdk 0.2.19 → 0.2.23. Identify new functionality beneficial for the sales agent and explain why. Then outline which items require code/config changes in this repo vs SDK-only fixes/feature improvements that need no code changes. Note: Claude Code changelog is the primary source for new features; cross-reference the SDK changelog for parity.';
+  const finalArgs = passthrough.length === 0 ? [defaultPrompt] : passthrough;
   const bin = process.env.CODEX_BIN || "codex";
-  const child = spawn(bin, passthrough, { stdio: "inherit" });
+  const child = spawn(bin, finalArgs, { stdio: "inherit" });
 
   child.on("exit", (code, signal) => {
     if (typeof code === "number") process.exit(code);

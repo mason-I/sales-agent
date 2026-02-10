@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:21:02.712Z","runId":"1769728862711-334516","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"carlos.chen-ad25edf8-0@eval-581573.com","fromName":"Carlos Chen","verbose":true}}
+{"timestamp":"2026-01-29T23:21:02.712Z","runId":"1769728862711-334516","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:21:05.458Z","runId":"1769728862711-334516","event_type":"pre_llm_complete","payload":{"contactId":"285674947021","dealId":"234885792239"}}
+{"timestamp":"2026-01-29T23:21:06.762Z","runId":"1769728862711-334516","event_type":"deal_context_fetched","dealId":"234885792239","payload":{"dealStage":"2130118129"}}

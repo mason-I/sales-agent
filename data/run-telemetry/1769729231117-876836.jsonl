@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:27:11.118Z","runId":"1769729231117-876836","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"javier.chen-ba6f8b91-0@eval-446551.com","fromName":"Javier Chen","verbose":true}}
+{"timestamp":"2026-01-29T23:27:11.118Z","runId":"1769729231117-876836","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:27:13.537Z","runId":"1769729231117-876836","event_type":"pre_llm_complete","payload":{"contactId":"285610427865","dealId":"235039260120"}}
+{"timestamp":"2026-01-29T23:27:14.797Z","runId":"1769729231117-876836","event_type":"deal_context_fetched","dealId":"235039260120","payload":{"dealStage":"2130118129"}}

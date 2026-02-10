@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-29T23:23:55.363Z","runId":"1769729035362-80033","event_type":"agent_start","payload":{"source":"new_inbound","type":"email","fromEmail":"theresa.okafor-705e25ee-0@eval-955257.com","fromName":"Theresa Okafor","verbose":true}}
+{"timestamp":"2026-01-29T23:23:55.363Z","runId":"1769729035362-80033","event_type":"pre_llm_start","payload":{"source":"new_inbound"}}
+{"timestamp":"2026-01-29T23:23:57.958Z","runId":"1769729035362-80033","event_type":"pre_llm_complete","payload":{"contactId":"285610426833","dealId":"235086188989"}}
+{"timestamp":"2026-01-29T23:23:59.314Z","runId":"1769729035362-80033","event_type":"deal_context_fetched","dealId":"235086188989","payload":{"dealStage":"2130118129"}}

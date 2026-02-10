@@ -253,7 +253,7 @@ async function evaluateConversation(
         model: "opus", // Use Opus for quality evaluation
         executable: "bun",
         pathToClaudeCodeExecutable: getClaudeCodePath(),
-        env: getClaudeEnv(),
+        env: { ...getClaudeEnv(), CLAUDE_CODE_ENABLE_TASKS: "true" },
         systemPrompt: { type: "preset", preset: "claude_code", append: EVALUATOR_SYSTEM_PROMPT },
         settingSources: ["user", "project"] as any,
         allowedTools: ["StructuredOutput"],

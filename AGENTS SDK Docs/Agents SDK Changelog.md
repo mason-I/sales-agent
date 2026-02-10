@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.25
+
+- Updated to parity with Claude Code v2.1.25
+
+## 0.2.23
+
+- Fixed structured output validation errors not being reported correctly
+- Updated to parity with Claude Code v2.1.23
+
+## 0.2.22
+
+- Fixed structured outputs to handle empty assistant messsages
+- Updated to parity with Claude Code v2.1.22
+
+## 0.2.21
+
+- Added `config`, `scope`, and `tools` fields to `McpServerStatus` for richer server introspection
+- Added `reconnectMcpServer()` and `toggleMcpServer()` methods for managing MCP server connections
+- Added `disabled` status to `McpServerStatus`
+- Fixed PermissionRequest hooks not being executed in SDK mode (e.g., VS Code extension)
+- Updated to parity with Claude Code v2.1.21
+
+## 0.2.20
+
+- Added support for loading CLAUDE.md files from directories specified via `additionalDirectories` option (requires setting `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` in the `env` option)
+- Added `CLAUDE_CODE_ENABLE_TASKS` env var, set to `true` to opt into the new task system
+- Updated to parity with Claude Code v2.1.20
+
+## 0.2.19
+
+- Added `CLAUDE_CODE_ENABLE_TASKS` env var, set to `true` to opt into the new task system
+
 ## 0.2.17
 
 - Updated to parity with Claude Code v2.1.17
