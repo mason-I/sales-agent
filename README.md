@@ -1,26 +1,92 @@
-# sales-agent
+# Sales Agent for Zendesk
 
-Autonomous, async-first sales agent for Zendesk built on the Claude Agent SDK. It integrates with HubSpot CRM to qualify leads, answer product questions, and move deals through stage gates without human escalation.
+This project is an autonomous sales agent that runs your Zendesk sales conversations in HubSpot, end to end.
 
-Core capabilities:
-- Handles inbound, reply-to-existing, and stale-deal events
-- Uses CRM tools to read/update deals, log email drafts, and add notes/tasks
-- Enforces stage-gate requirements and captures missing qualification data
-- Leverages subagents for KB research, email drafting, and services quoting
-- Includes an evaluation harness for simulated conversations
-- Refreshes `deal_summary` after each successful agent run to keep context current
+It is built to do the work a strong async sales rep does:
+- respond fast,
+- stay accurate,
+- qualify without interrogating,
+- move deals forward with clear next steps,
+- and keep CRM clean without manual cleanup.
 
-## Keeping Agent SDK docs up to date
+## What It Does for You
 
-This repo keeps local copies of upstream changelogs in `AGENTS SDK Docs/` so the agent (and humans) can see the latest SDK + tooling updates.
+### 1) Replies to inbound leads automatically
+When a new email arrives, the agent:
+- understands the buyer intent,
+- answers the question directly,
+- asks at most one high-value follow-up when needed,
+- logs the draft into HubSpot.
 
-- Sync now: `bun run docs:sync-changelogs`
-- CI-style check (exit code 2 if outdated): `bun run docs:check-changelogs`
-- Start Codex with auto-sync (at most once per 12 hours): `bun run codex` (supports `--sync-now` / `--no-sync`)
+### 2) Runs multi-turn conversations without losing context
+Across reply chains, it tracks:
+- what the buyer already shared,
+- what has already been asked,
+- what still blocks deal progression.
 
-### Periodic sync (optional)
+It avoids repeating questions and adapts when the buyer is vague, tired, or price-sensitive.
 
-Templates live in `ops/changelog-sync/`.
+### 3) Qualifies and updates CRM as it learns
+As information appears in conversation, it fills key deal fields such as:
+- primary pain and challenges,
+- timeline,
+- number of agents,
+- support channels,
+- ticket volume.
 
-- macOS launchd: copy `ops/changelog-sync/launchd.plist.template` → `~/Library/LaunchAgents/com.sales-sdk.sync-agent-sdk-changelogs.plist`, replace `{{REPO_PATH}}`, then `launchctl load -w ~/Library/LaunchAgents/com.sales-sdk.sync-agent-sdk-changelogs.plist`
-- cron: add a line like the example in `ops/changelog-sync/cron.template` (replace `{{REPO_PATH}}`)
+It also refreshes a structured `deal_summary` so each new turn starts with current context.
+
+### 4) Controls stage progression based on evidence
+Deals only advance when requirements are actually met (not guessed), including:
+- required qualification data,
+- pricing evidence in sent drafts,
+- line items created,
+- invoice link sent,
+- invoice paid before closed-won.
+
+### 5) Handles pricing and quoting flow
+If pricing intent appears, the agent can:
+- pull official catalog pricing,
+- send compliant pricing responses,
+- create line items and draft invoices,
+- include invoice links in customer-ready drafts.
+
+### 6) Re-engages stale deals automatically
+Scheduled workflows detect inactive deals and trigger follow-ups that:
+- reference prior context,
+- keep asks minimal,
+- try to revive momentum without pushy outreach.
+
+### 7) Reviews closed-lost opportunities for revival
+A separate cron can evaluate closed-lost deals and selectively re-open/re-engage when conditions support it.
+
+### 8) Makes autonomous decisions in hard scenarios
+The agent handles real-world sales friction without human escalation:
+- declines call/meeting requests (async-only model),
+- declines discount requests,
+- handles out-of-scope or spam messages,
+- closes non-fit deals with logged rationale.
+
+## Why Teams Use It
+
+- Fewer dropped leads: every inbound gets handled.
+- Higher CRM quality: summaries and fields stay current.
+- Better consistency: the same guardrails apply every time.
+- More pipeline momentum: next actions are always explicit.
+- Less rep busywork: drafting, logging, and stage hygiene are automated.
+
+## Typical Journey
+
+1. Prospect emails with a question.
+2. Agent drafts and logs a response in HubSpot.
+3. Conversation continues with targeted qualification.
+4. Agent updates deal data and summary after each run.
+5. When appropriate, agent shares pricing, creates line items, and prepares invoice flow.
+6. Deal advances only when evidence exists for the next stage.
+
+## Minimal Run Commands
+
+- Start agent runtime: `bun run dev`
+- Run stale-deal reactivation job: `bun run cron:stale-deals`
+- Run closed-lost review/re-engagement: `bun run cron:dead-opps`
+- Run evaluation conversations: `bun run eval -- --count 5 --concurrency 2`
