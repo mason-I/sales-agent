@@ -1,4 +1,4 @@
-# Sales Agent for Zendesk
+# Sales Agent for Zendesk (WIP)
 
 This project is an autonomous sales agent that runs your Zendesk sales conversations in HubSpot, end to end.
 
